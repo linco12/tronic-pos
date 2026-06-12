@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Expenses{% endblock %}
+{% block page_title %}Expenses{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div><h4 class="mb-0">Expense Tracker</h4></div>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addExpModal">
+    <i class="bi bi-plus-lg me-1"></i>Record Expense
+  </button>
+</div>
+
+<div class="section">
+  <!-- Date filter -->
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto"><label class="form-label small mb-1">From</label>
+          <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}"></div>
+        <div class="col-auto"><label class="form-label small mb-1">To</label>
+          <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}"></div>
+        <div class="col-auto"><button class="btn btn-sm btn-primary">Filter</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- By category summary -->
+  {% if totals %}
+  <div class="row g-3 mb-4">
+    {% for t in totals %}
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">{{ t.category }}</div>
+          <div class="fw-bold fs-5 text-danger">${{ '%.2f'|format(t.total) }}</div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between">
+      <span><i class="bi bi-wallet2 me-2"></i>Expense Records</span>
+      {% if expenses %}
+      <span class="fw-bold text-danger">Total: ${{ '%.2f'|format(expenses|sum(attribute='amount')) }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Receipt Ref</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for e in expenses %}
+          <tr>
+            <td>{{ e.expense_date }}</td>
+            <td><span class="badge bg-secondary">{{ e.category }}</span></td>
+            <td>{{ e.description or '—' }}</td>
+            <td class="fw-bold text-danger">${{ '%.2f'|format(e.amount) }}</td>
+            <td><small>{{ e.receipt_ref or '—' }}</small></td>
+            <td>
+              <form method="post" action="{{ url_for('expense_delete', eid=e.id) }}" class="d-inline"
+                    onsubmit="return confirm('Delete this expense?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No expenses recorded for this period.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add Expense Modal -->
+<div class="modal fade" id="addExpModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-wallet2 me-2"></i>Record Expense</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('expense_add') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Category *</label>
+              <select name="category" class="form-select" required>
+                <option value="">Select…</option>
+                {% for cat in ['Rent','Utilities (Power/Water)','Staff Wages','Transport','Packaging','Advertising','ZIMRA Taxes','Bank Charges','Internet / Airtime','Repairs & Maintenance','Stock Purchases','Other'] %}
+                <option>{{ cat }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Amount ($) *</label>
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" name="amount" class="form-control" min="0.01" step="0.01" required>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Date *</label>
+              <input type="date" name="expense_date" class="form-control" value="" required
+                id="expDate" onfocus="if(!this.value)this.value=new Date().toISOString().split('T')[0]">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Receipt / Ref Number</label>
+              <input name="receipt_ref" class="form-control" placeholder="Optional">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Description</label>
+              <input name="description" class="form-control" placeholder="Brief description">
+            </div>
+            <div class="col-12">
+              <label class="form-label fw-semibold">Notes</label>
+              <textarea name="notes" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-save me-1"></i>Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

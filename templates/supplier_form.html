@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if supplier else 'New' }} Supplier{% endblock %}
+{% block page_title %}{{ 'Edit' if supplier else 'New' }} Supplier{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header bg-primary text-white"><i class="bi bi-building me-2"></i>{{ 'Edit' if supplier else 'Add' }} Supplier</div>
+        <div class="card-body">
+          <form method="post">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label fw-semibold">Company / Supplier Name *</label>
+                <input name="name" class="form-control" required value="{{ supplier.name if supplier else '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Contact Person</label>
+                <input name="contact_person" class="form-control" value="{{ supplier.contact_person if supplier else '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Phone</label>
+                <input name="phone" class="form-control" value="{{ supplier.phone if supplier else '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Email</label>
+                <input type="email" name="email" class="form-control" value="{{ supplier.email if supplier else '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Payment Terms</label>
+                <select name="payment_terms" class="form-select">
+                  {% for t in ['Cash','COD','7 days','14 days','30 days','60 days','Consignment'] %}
+                  <option {% if supplier and supplier.payment_terms==t %}selected{% endif %}>{{ t }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Address</label>
+                <textarea name="address" class="form-control" rows="2">{{ supplier.address if supplier else '' }}</textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Notes</label>
+                <textarea name="notes" class="form-control" rows="2">{{ supplier.notes if supplier else '' }}</textarea>
+              </div>
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save Supplier</button>
+              <a href="{{ url_for('suppliers') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

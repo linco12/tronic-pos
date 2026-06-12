@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block page_title %}Inventory Management{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div><h4 class="mb-0">Stock Levels</h4></div>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#adjustModal">
+    <i class="bi bi-sliders me-1"></i>Adjust Stock
+  </button>
+</div>
+
+<div class="section">
+  <!-- Summary cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="stat-card bg-primary-g">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="stat-label">Total Products</div>
+            <div class="stat-value">{{ products|length }}</div>
+          </div>
+          <i class="bi bi-box-seam stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-danger-g">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="stat-label">Low / Out of Stock</div>
+            <div class="stat-value">{{ products|selectattr('stock_quantity','le', 0)|list|length }}</div>
+          </div>
+          <i class="bi bi-exclamation-triangle stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-success-g">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="stat-label">Stock Value (Cost)</div>
+            <div class="stat-value">${{ '%.0f'|format(products|sum(attribute='cost_price') if products else 0) }}</div>
+          </div>
+          <i class="bi bi-currency-dollar stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-warning-g">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="stat-label">Stock Value (Retail)</div>
+            <div class="stat-value">${{ '%.0f'|format(products|map(attribute='selling_price')|sum if products else 0) }}</div>
+          </div>
+          <i class="bi bi-graph-up stat-icon"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-archive me-2"></i>Stock List</span>
+      <input type="text" id="stockSearch" class="form-control form-control-sm" style="width:200px" placeholder="Search…">
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0" id="stockTable">
+        <thead class="table-light">
+          <tr>
+            <th>Product</th><th>Category</th><th>On Hand</th><th>Min Level</th>
+            <th>Status</th><th>Cost Value</th><th>Retail Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in products %}
+          {% set status = 'out' if p.stock_quantity <= 0 else ('low' if p.stock_quantity <= p.min_stock_level else 'ok') %}
+          <tr class="{{ 'low-stock-row' if status in ('out','low') else '' }}">
+            <td><strong>{{ p.name }}</strong><br><small class="text-muted">{{ p.sku }}</small></td>
+            <td>{{ p.cat_name or '—' }}</td>
+            <td class="fw-bold {% if status == 'out' %}text-danger{% elif status == 'low' %}text-warning{% else %}text-success{% endif %}">
+              {{ p.stock_quantity }} {{ p.unit }}
+            </td>
+            <td>{{ p.min_stock_level }} {{ p.unit }}</td>
+            <td>
+              {% if status == 'out' %}<span class="badge bg-danger">Out of Stock</span>
+              {% elif status == 'low' %}<span class="badge bg-warning text-dark">Low Stock</span>
+              {% else %}<span class="badge bg-success">In Stock</span>{% endif %}
+            </td>
+            <td>${{ '%.2f'|format(p.cost_price * p.stock_quantity) }}</td>
+            <td>${{ '%.2f'|format(p.selling_price * p.stock_quantity) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Adjustment Log -->
+  {% if adjustments %}
+  <div class="card mt-4">
+    <div class="card-header"><i class="bi bi-clock-history me-2"></i>Recent Stock Adjustments</div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr><th>Date</th><th>Product</th><th>Type</th><th>Quantity</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for a in adjustments %}
+          <tr>
+            <td><small>{{ a.created_at[:16] }}</small></td>
+            <td>{{ a.product_name }}</td>
+            <td>
+              {% if a.adjustment_type == 'received' %}<span class="badge bg-success">Received</span>
+              {% elif a.adjustment_type == 'damage' %}<span class="badge bg-danger">Damage</span>
+              {% elif a.adjustment_type == 'theft' %}<span class="badge bg-danger">Theft</span>
+              {% else %}<span class="badge bg-secondary">{{ a.adjustment_type }}</span>{% endif %}
+            </td>
+            <td>{{ a.quantity }}</td>
+            <td>{{ a.notes }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Adjust Modal -->
+<div class="modal fade" id="adjustModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title"><i class="bi bi-sliders me-2"></i>Stock Adjustment</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('inventory_adjust') }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Product</label>
+            <select name="product_id" class="form-select" required>
+              <option value="">Select product…</option>
+              {% for p in products %}
+              <option value="{{ p.id }}">{{ p.name }} ({{ p.stock_quantity }} {{ p.unit }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Adjustment Type</label>
+            <select name="adjustment_type" class="form-select">
+              <option value="received">Goods Received (+)</option>
+              <option value="correction_plus">Correction / Count Up (+)</option>
+              <option value="damage">Damage / Spoilage (−)</option>
+              <option value="theft">Theft / Loss (−)</option>
+              <option value="correction_minus">Correction / Count Down (−)</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Quantity</label>
+            <input type="number" name="quantity" class="form-control" min="0.01" step="0.01" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Notes</label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Reason for adjustment…"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>Apply Adjustment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById('stockSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#stockTable tbody tr').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Reports Dashboard{% endblock %}
+{% block page_title %}Reports Dashboard{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="section">
+  <!-- KPI Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="stat-card bg-primary-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Today's Revenue</div>
+            <div class="stat-value">${{ '%.2f'|format(summary.today_sales) }}</div>
+            <small class="opacity-75">COGS: ${{ '%.2f'|format(summary.today_cogs) }}</small>
+          </div>
+          <i class="bi bi-cash-stack stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card {{ 'bg-success-g' if summary.today_profit >= 0 else 'bg-danger-g' }}">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Today's Net Profit</div>
+            <div class="stat-value">${{ '%.2f'|format(summary.today_profit) }}</div>
+            <small class="opacity-75">After expenses</small>
+          </div>
+          <i class="bi bi-graph-up stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-primary-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Month Revenue</div>
+            <div class="stat-value">${{ '%.2f'|format(summary.month_sales) }}</div>
+            <small class="opacity-75">COGS: ${{ '%.2f'|format(summary.month_cogs) }}</small>
+          </div>
+          <i class="bi bi-calendar-month stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card {{ 'bg-success-g' if summary.month_profit >= 0 else 'bg-danger-g' }}">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Month Net Profit</div>
+            <div class="stat-value">${{ '%.2f'|format(summary.month_profit) }}</div>
+            <small class="opacity-75">Expenses: ${{ '%.2f'|format(summary.month_expenses) }}</small>
+          </div>
+          <i class="bi bi-graph-up-arrow stat-icon"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick report links -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <a href="{{ url_for('report_sales') }}" class="card text-decoration-none h-100 text-center p-3">
+        <i class="bi bi-bar-chart-line text-primary" style="font-size:2rem"></i>
+        <div class="fw-semibold mt-2">Sales Report</div>
+        <small class="text-muted">Daily / weekly / monthly breakdown</small>
+      </a>
+    </div>
+    <div class="col-md-3">
+      <a href="{{ url_for('report_pnl') }}" class="card text-decoration-none h-100 text-center p-3">
+        <i class="bi bi-graph-up text-success" style="font-size:2rem"></i>
+        <div class="fw-semibold mt-2">Profit & Loss</div>
+        <small class="text-muted">Revenue, COGS, expenses, net profit</small>
+      </a>
+    </div>
+    <div class="col-md-3">
+      <a href="{{ url_for('report_tax') }}" class="card text-decoration-none h-100 text-center p-3">
+        <i class="bi bi-receipt-cutoff text-warning" style="font-size:2rem"></i>
+        <div class="fw-semibold mt-2">ZIMRA VAT Report</div>
+        <small class="text-muted">Tax collected by type</small>
+      </a>
+    </div>
+    <div class="col-md-3">
+      <a href="{{ url_for('zreport') }}" class="card text-decoration-none h-100 text-center p-3">
+        <i class="bi bi-printer text-info" style="font-size:2rem"></i>
+        <div class="fw-semibold mt-2">Day-End Z-Report</div>
+        <small class="text-muted">End of day summary</small>
+      </a>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Last 7 Days — Revenue vs Profit</div>
+        <div class="card-body">
+          <canvas id="salesChart" height="80"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-trophy me-2"></i>Top Products This Month</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {% for p in top_products %}
+              <tr>
+                <td><small>{{ p.product_name[:22] }}</small></td>
+                <td>{{ '%.1f'|format(p.qty) }}</td>
+                <td class="fw-bold">${{ '%.2f'|format(p.revenue) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-center text-muted py-3">No sales this month</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Low stock alert -->
+  {% if low_stock %}
+  <div class="card mt-4 border-danger">
+    <div class="card-header bg-danger text-white">
+      <i class="bi bi-exclamation-triangle me-2"></i>Low / Out of Stock Alert ({{ low_stock|length }} items)
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Product</th><th>Current Stock</th><th>Minimum</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for p in low_stock %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td class="text-danger fw-bold">{{ p.stock_quantity }} {{ p.unit }}</td>
+            <td>{{ p.min_stock_level }}</td>
+            <td><a href="{{ url_for('purchase_new') }}" class="btn btn-sm btn-outline-primary">Order Stock</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const ctx = document.getElementById('salesChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: {{ chart_labels|safe }},
+      datasets: [
+        {
+          label: 'Revenue ($)',
+          data: {{ chart_sales|safe }},
+          backgroundColor: 'rgba(37,99,235,0.7)',
+          borderRadius: 4,
+        },
+        {
+          label: 'Net Profit ($)',
+          data: {{ chart_profits|safe }},
+          backgroundColor: 'rgba(22,163,74,0.7)',
+          borderRadius: 4,
+          type: 'line',
+          borderColor: '#16a34a',
+          tension: 0.3,
+          fill: false,
+          pointRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+</script>
+{% endblock %}

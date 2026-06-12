@@ -1,0 +1,22 @@
+# Render.com deployment configuration
+# Deploy at: https://render.com  → New Web Service → Connect your GitHub repo
+
+services:
+  - type: web
+    name: tronic-pos
+    runtime: python
+    buildCommand: pip install -r requirements.txt && python startup.py
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    disk:
+      name: pos-data
+      mountPath: /mnt/data
+      sizeGB: 1
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true          # Render auto-generates a secure key
+      - key: ADMIN_EMAIL
+        value: lincolnmotiwac@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false                  # Set this manually in Render dashboard
+      - key: DATABASE_PATH
+        value: /mnt/data/tronic_pos.db

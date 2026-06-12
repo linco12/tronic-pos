@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Profit & Loss{% endblock %}
+{% block page_title %}Profit & Loss Statement{% endblock %}
+{% block content %}
+<div class="section">
+  <!-- Date filter -->
+  <div class="card mb-4">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto"><label class="form-label small mb-1">From</label>
+          <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}"></div>
+        <div class="col-auto"><label class="form-label small mb-1">To</label>
+          <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}"></div>
+        <div class="col-auto"><button class="btn btn-sm btn-primary">Run P&L</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <!-- P&L Statement -->
+      <div class="card">
+        <div class="card-header bg-dark text-white text-center">
+          <strong>{{ shop.name }}</strong><br>
+          <small>Profit & Loss Statement — {{ date_from }} to {{ date_to }}</small>
+        </div>
+        <div class="card-body p-0">
+          <table class="table mb-0">
+            <tbody>
+              <!-- Revenue -->
+              <tr class="table-light"><td colspan="2" class="fw-bold text-uppercase text-muted py-2 ps-3">Revenue</td></tr>
+              <tr>
+                <td class="ps-4">Gross Sales</td>
+                <td class="text-end fw-bold">${{ '%.2f'|format(revenue) }}</td>
+              </tr>
+              <tr>
+                <td class="ps-4 text-muted">Less: VAT Collected (output tax)</td>
+                <td class="text-end text-muted">(${{ '%.2f'|format(tax_collected) }})</td>
+              </tr>
+              <tr class="table-primary">
+                <td class="ps-4 fw-bold">Net Revenue (excl. VAT)</td>
+                <td class="text-end fw-bold">${{ '%.2f'|format(revenue - tax_collected) }}</td>
+              </tr>
+
+              <!-- COGS -->
+              <tr class="table-light"><td colspan="2" class="fw-bold text-uppercase text-muted py-2 ps-3">Cost of Goods Sold</td></tr>
+              <tr>
+                <td class="ps-4">Cost of Products Sold</td>
+                <td class="text-end text-danger">(${{ '%.2f'|format(cogs) }})</td>
+              </tr>
+
+              <!-- Gross Profit -->
+              <tr class="table-success">
+                <td class="fw-bold ps-3">Gross Profit</td>
+                <td class="text-end fw-bold text-success">${{ '%.2f'|format(gross_profit) }}</td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-4"><small>Gross Margin</small></td>
+                <td class="text-end text-muted"><small>{{ '%.1f'|format(gross_margin) }}%</small></td>
+              </tr>
+
+              <!-- Expenses -->
+              <tr class="table-light"><td colspan="2" class="fw-bold text-uppercase text-muted py-2 ps-3">Operating Expenses</td></tr>
+              {% for e in expenses_by_cat %}
+              <tr>
+                <td class="ps-4">{{ e.category }}</td>
+                <td class="text-end text-danger">(${{ '%.2f'|format(e.total) }})</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="2" class="text-center text-muted py-2">No expenses recorded</td></tr>
+              {% endfor %}
+              <tr>
+                <td class="ps-4 fw-semibold">Total Operating Expenses</td>
+                <td class="text-end fw-semibold text-danger">(${{ '%.2f'|format(total_expenses) }})</td>
+              </tr>
+
+              <!-- Net Profit -->
+              <tr class="{{ 'table-success' if net_profit >= 0 else 'table-danger' }} border-top border-dark">
+                <td class="fw-bold fs-5 ps-3">NET PROFIT / (LOSS)</td>
+                <td class="text-end fw-bold fs-5 {{ 'text-success' if net_profit >= 0 else 'text-danger' }}">
+                  {{ '' if net_profit >= 0 else '(' }}${{ '%.2f'|format(net_profit|abs) }}{{ ')' if net_profit < 0 else '' }}
+                </td>
+              </tr>
+              <tr>
+                <td class="text-muted ps-4"><small>Net Margin</small></td>
+                <td class="text-end text-muted"><small>{{ '%.1f'|format(net_margin) }}%</small></td>
+              </tr>
+
+              <!-- Tax note -->
+              <tr class="table-warning">
+                <td class="ps-3"><strong>VAT Payable to ZIMRA</strong><br>
+                  <small class="text-muted">Output VAT collected from customers</small></td>
+                <td class="text-end fw-bold">${{ '%.2f'|format(tax_collected) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer text-center">
+          <button onclick="window.print()" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-printer me-1"></i>Print P&L Statement
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

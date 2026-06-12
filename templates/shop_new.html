@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Create New Shop{% endblock %}
+{% block page_title %}Create New Shop{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header bg-success text-white">
+          <i class="bi bi-shop me-2"></i>New Shop Details
+        </div>
+        <div class="card-body">
+          <form method="post">
+            <div class="row g-3">
+              {% if current_user and current_user.role == 'admin' and users %}
+              <div class="col-12">
+                <label class="form-label fw-semibold">Assign to Owner</label>
+                <select name="owner_id" class="form-select">
+                  <option value="">— My account (Admin) —</option>
+                  {% for u in users %}
+                  <option value="{{ u.id }}">{{ u.name }} ({{ u.email }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              {% endif %}
+              <div class="col-md-8">
+                <label class="form-label fw-semibold">Shop Name *</label>
+                <input name="name" class="form-control form-control-lg" required placeholder="e.g. Tronic General Store">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Currency</label>
+                <select name="currency" class="form-select form-select-lg">
+                  <option>USD</option>
+                  <option>ZWL</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Tagline / Slogan</label>
+                <input name="tagline" class="form-control" placeholder="Quality Products, Best Prices">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Address</label>
+                <textarea name="address" class="form-control" rows="2" placeholder="123 Main St, Harare, Zimbabwe"></textarea>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Phone</label>
+                <input name="phone" class="form-control" placeholder="+263 77 XXX XXXX">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Email</label>
+                <input type="email" name="email" class="form-control" placeholder="shop@email.com">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Receipt Footer Message</label>
+                <input name="receipt_footer" class="form-control" value="Thank you for shopping with us!">
+              </div>
+            </div>
+            <div class="alert alert-info mt-3 mb-0 py-2">
+              <i class="bi bi-info-circle me-1"></i>
+              ZIMRA TIN, VAT number, and EcoCash credentials can be configured in Settings after creating the shop.
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-success btn-lg">
+                <i class="bi bi-check-circle me-1"></i>Create Shop & Go to POS
+              </button>
+              <a href="{{ url_for('select_shop') }}" class="btn btn-outline-secondary btn-lg">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

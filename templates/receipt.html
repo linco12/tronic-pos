@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt — {{ sale.reference }}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Courier New', monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 10px; }
+    .center { text-align: center; }
+    .shop-name { font-size: 16px; font-weight: bold; }
+    hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+    .row { display: flex; justify-content: space-between; margin: 2px 0; }
+    .item-name { flex: 1; }
+    .item-price { text-align: right; min-width: 70px; }
+    .total-row { font-weight: bold; font-size: 14px; }
+    .footer { text-align: center; margin-top: 8px; font-size: 11px; }
+    .big { font-size: 18px; font-weight: bold; }
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="shop-name">{{ shop.name }}</div>
+    {% if shop.tagline %}<div>{{ shop.tagline }}</div>{% endif %}
+    {% if shop.address %}<div>{{ shop.address }}</div>{% endif %}
+    {% if shop.phone %}<div>Tel: {{ shop.phone }}</div>{% endif %}
+    {% if shop.vat_registered and shop.vat_number %}<div>VAT Reg: {{ shop.vat_number }}</div>{% endif %}
+    {% if shop.zimra_tin %}<div>ZIMRA TIN: {{ shop.zimra_tin }}</div>{% endif %}
+  </div>
+
+  <hr>
+  <div class="row"><span>Receipt No:</span><span>{{ sale.reference }}</span></div>
+  <div class="row"><span>Date:</span><span>{{ sale.created_at[:16] }}</span></div>
+  <div class="row"><span>Cashier:</span><span>{{ sale.cashier }}</span></div>
+  <hr>
+
+  <div>
+    {% for item in items %}
+    <div class="item-name">{{ item.product_name }}</div>
+    <div class="row">
+      <span class="ms-2">{{ item.quantity }} × ${{ '%.2f'|format(item.unit_price) }}</span>
+      <span class="item-price">${{ '%.2f'|format(item.total) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <hr>
+  <div class="row"><span>Subtotal</span><span>${{ '%.2f'|format(sale.subtotal) }}</span></div>
+  {% if sale.tax_amount > 0 %}
+  <div class="row"><span>VAT ({{ shop.vat_rate or 15 }}%)</span><span>${{ '%.2f'|format(sale.tax_amount) }}</span></div>
+  {% endif %}
+  {% if sale.discount_amount > 0 %}
+  <div class="row"><span>Discount</span><span>-${{ '%.2f'|format(sale.discount_amount) }}</span></div>
+  {% endif %}
+  <hr>
+  <div class="row total-row"><span>TOTAL</span><span>${{ '%.2f'|format(sale.total) }}</span></div>
+
+  <hr>
+  {% for p in payments %}
+  <div class="row">
+    <span>{{ p.method|upper }}</span>
+    <span>${{ '%.2f'|format(p.amount) }}</span>
+  </div>
+  {% if p.method == 'ecocash' and p.ecocash_number %}
+  <div class="row"><span>EcoCash No:</span><span>{{ p.ecocash_number }}</span></div>
+  {% if p.transaction_ref %}<div class="row"><span>ECO Ref:</span><span>{{ p.transaction_ref }}</span></div>{% endif %}
+  {% endif %}
+  {% endfor %}
+  {% if sale.change_given > 0 %}
+  <div class="row total-row"><span>CHANGE</span><span>${{ '%.2f'|format(sale.change_given) }}</span></div>
+  {% endif %}
+
+  <hr>
+  <div class="footer">
+    {% if shop.receipt_footer %}{{ shop.receipt_footer }}{% else %}Thank you for shopping with us!{% endif %}
+    <br><br>
+    {% if shop.vat_registered %}<strong>*** VAT INVOICE ***</strong><br>{% endif %}
+    All prices in {{ shop.currency or 'USD' }}
+  </div>
+
+  <div class="no-print" style="margin-top:20px;text-align:center">
+    <button onclick="window.print()" style="padding:8px 20px;font-size:14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">
+      Print Receipt
+    </button>
+    <br><br>
+    <a href="javascript:window.close()">Close</a>
+  </div>
+
+  <script>
+    // Auto-print when opened in new tab
+    window.onload = function() { window.print(); };
+  </script>
+</body>
+</html>

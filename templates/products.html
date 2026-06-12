@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block page_title %}Products{% endblock %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center">
+  <div>
+    <h4 class="mb-0">Product Catalogue</h4>
+    <small class="text-muted">{{ products|length }} products</small>
+  </div>
+  <a href="{{ url_for('product_new') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>Add Product
+  </a>
+</div>
+
+<div class="section">
+  <!-- Filter bar -->
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto">
+          <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">All Categories</option>
+            {% for c in categories %}
+            <option value="{{ c.id }}" {% if cat_filter == c.id|string %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <a href="{{ url_for('products') }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Product</th><th>SKU</th><th>Category</th><th>Supplier</th>
+              <th>Cost</th><th>Price</th><th>Margin</th><th>Stock</th><th>Tax</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in products %}
+            <tr class="{% if p.stock_quantity <= p.min_stock_level %}low-stock-row{% endif %} {% if not p.is_active %}text-muted{% endif %}">
+              <td>
+                <strong>{{ p.name }}</strong>
+                {% if not p.is_active %}<span class="badge bg-secondary ms-1">Inactive</span>{% endif %}
+                {% if p.stock_quantity <= p.min_stock_level %}<span class="badge bg-danger ms-1">Low Stock</span>{% endif %}
+                {% if p.description %}<br><small class="text-muted">{{ p.description[:60] }}</small>{% endif %}
+              </td>
+              <td><code>{{ p.sku }}</code></td>
+              <td>{{ p.cat_name or '—' }}</td>
+              <td>{{ p.sup_name or '—' }}</td>
+              <td>${{ '%.2f'|format(p.cost_price) }}</td>
+              <td class="fw-bold">${{ '%.2f'|format(p.selling_price) }}</td>
+              <td>
+                {% set margin = ((p.selling_price - p.cost_price) / p.selling_price * 100) if p.selling_price > 0 else 0 %}
+                <span class="badge {% if margin >= 30 %}bg-success{% elif margin >= 15 %}bg-warning text-dark{% else %}bg-danger{% endif %}">
+                  {{ '%.0f'|format(margin) }}%
+                </span>
+              </td>
+              <td>
+                <span class="{% if p.stock_quantity <= p.min_stock_level %}text-danger fw-bold{% endif %}">
+                  {{ p.stock_quantity }} {{ p.unit }}
+                </span>
+              </td>
+              <td>
+                {% if p.tax_type == 'standard' %}<span class="badge bg-primary">15% VAT</span>
+                {% elif p.tax_type == 'zero' %}<span class="badge bg-success">Zero-rated</span>
+                {% else %}<span class="badge bg-secondary">Exempt</span>{% endif %}
+              </td>
+              <td>
+                <a href="{{ url_for('product_edit', pid=p.id) }}" class="btn btn-sm btn-outline-primary me-1">
+                  <i class="bi bi-pencil"></i>
+                </a>
+                <form method="post" action="{{ url_for('product_delete', pid=p.id) }}" class="d-inline"
+                      onsubmit="return confirm('Deactivate {{ p.name }}?')">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-4">No products yet. <a href="{{ url_for('product_new') }}">Add your first product</a></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

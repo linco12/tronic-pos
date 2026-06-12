@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Sales Report{% endblock %}
+{% block page_title %}Sales Report{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="card mb-3">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto"><label class="form-label small mb-1">From</label>
+          <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}"></div>
+        <div class="col-auto"><label class="form-label small mb-1">To</label>
+          <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}"></div>
+        <div class="col-auto"><label class="form-label small mb-1">Group By</label>
+          <select name="group" class="form-select form-select-sm">
+            <option value="day" {% if group_by=='day' %}selected{% endif %}>Day</option>
+            <option value="week" {% if group_by=='week' %}selected{% endif %}>Week</option>
+            <option value="month" {% if group_by=='month' %}selected{% endif %}>Month</option>
+          </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-sm btn-primary">Run Report</button></div>
+        <div class="col-auto">
+          <a href="{{ url_for('export_sales_csv', **{'from': date_from, 'to': date_to}) }}" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-download me-1"></i>Export CSV
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-table me-2"></i>Sales by {{ group_by|capitalize }}</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Period</th><th>Transactions</th><th>Revenue</th><th>VAT</th><th>Discounts</th></tr>
+            </thead>
+            <tbody>
+              {% set ns = namespace(total_rev=0, total_tax=0, total_disc=0, total_trans=0) %}
+              {% for r in rows %}
+              {% set ns.total_rev = ns.total_rev + (r.revenue or 0) %}
+              {% set ns.total_tax = ns.total_tax + (r.tax or 0) %}
+              {% set ns.total_disc = ns.total_disc + (r.discounts or 0) %}
+              {% set ns.total_trans = ns.total_trans + (r.transactions or 0) %}
+              <tr>
+                <td>{{ r.period }}</td>
+                <td>{{ r.transactions }}</td>
+                <td class="fw-bold">${{ '%.2f'|format(r.revenue or 0) }}</td>
+                <td>${{ '%.2f'|format(r.tax or 0) }}</td>
+                <td>${{ '%.2f'|format(r.discounts or 0) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">No sales in this period</td></tr>
+              {% endfor %}
+            </tbody>
+            {% if rows %}
+            <tfoot class="table-dark">
+              <tr>
+                <td><strong>TOTAL</strong></td>
+                <td>{{ ns.total_trans }}</td>
+                <td><strong>${{ '%.2f'|format(ns.total_rev) }}</strong></td>
+                <td>${{ '%.2f'|format(ns.total_tax) }}</td>
+                <td>${{ '%.2f'|format(ns.total_disc) }}</td>
+              </tr>
+            </tfoot>
+            {% endif %}
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-credit-card me-2"></i>Payment Methods</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Method</th><th>Count</th><th>Total</th></tr></thead>
+            <tbody>
+              {% for p in payment_breakdown %}
+              <tr>
+                <td>
+                  {% if p.payment_method == 'ecocash' %}<span class="badge badge-eco">EcoCash</span>
+                  {% elif p.payment_method == 'split' %}<span class="badge badge-split">Split</span>
+                  {% else %}<span class="badge badge-cash">Cash</span>{% endif %}
+                </td>
+                <td>{{ p.count }}</td>
+                <td class="fw-bold">${{ '%.2f'|format(p.total) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><i class="bi bi-trophy me-2"></i>Top Products</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="table-light"><tr><th>Product</th><th>Qty</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {% for p in product_breakdown %}
+              <tr>
+                <td><small>{{ p.product_name[:20] }}</small></td>
+                <td>{{ '%.1f'|format(p.qty) }}</td>
+                <td>${{ '%.2f'|format(p.revenue) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-muted py-2 text-center">No data</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}New Purchase Order{% endblock %}
+{% block page_title %}New Purchase Order{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-xl-9">
+      <div class="card">
+        <div class="card-header bg-primary text-white"><i class="bi bi-truck me-2"></i>New Purchase Order</div>
+        <div class="card-body">
+          <form method="post" id="poForm">
+            <div class="row g-3 mb-4">
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Supplier</label>
+                <select name="supplier_id" class="form-select">
+                  <option value="">— Walk-in / Cash Purchase —</option>
+                  {% for s in suppliers %}
+                  <option value="{{ s.id }}">{{ s.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Expected Delivery Date</label>
+                <input type="date" name="expected_date" class="form-control">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-semibold">Notes</label>
+                <input name="notes" class="form-control" placeholder="Optional notes">
+              </div>
+            </div>
+
+            <h6 class="fw-bold mb-3">Order Items</h6>
+            <table class="table" id="poTable">
+              <thead class="table-light">
+                <tr><th>Product</th><th style="width:120px">Quantity</th><th style="width:140px">Unit Cost ($)</th><th style="width:120px">Total</th><th></th></tr>
+              </thead>
+              <tbody id="poItems">
+                <tr class="po-row">
+                  <td>
+                    <select name="product_id[]" class="form-select form-select-sm product-sel" required onchange="updateRow(this)">
+                      <option value="">Select product…</option>
+                      {% for p in products %}
+                      <option value="{{ p.id }}" data-cost="{{ p.cost_price }}">{{ p.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td><input type="number" name="quantity[]" class="form-control form-control-sm qty-in" min="0.01" step="0.01" value="1" oninput="calcRowTotal(this)"></td>
+                  <td><input type="number" name="unit_cost[]" class="form-control form-control-sm cost-in" min="0" step="0.01" value="0" oninput="calcRowTotal(this)"></td>
+                  <td><span class="row-total fw-bold">$0.00</span></td>
+                  <td></td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" class="text-end fw-bold">PO Total:</td>
+                  <td><strong id="poTotal">$0.00</strong></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            <button type="button" class="btn btn-outline-secondary btn-sm mb-3" onclick="addRow()">
+              <i class="bi bi-plus-circle me-1"></i>Add Item
+            </button>
+
+            <div class="d-flex gap-2 mt-3">
+              <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Create Purchase Order</button>
+              <a href="{{ url_for('purchases') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const productData = {
+    {% for p in products %}{{ p.id }}: { cost: {{ p.cost_price }} },
+    {% endfor %}
+  };
+
+  function updateRow(sel) {
+    const row = sel.closest('tr');
+    const pid = sel.value;
+    if (pid && productData[pid]) {
+      row.querySelector('.cost-in').value = productData[pid].cost.toFixed(2);
+    }
+    calcRowTotal(row.querySelector('.qty-in'));
+  }
+
+  function calcRowTotal(inp) {
+    const row = inp.closest('tr');
+    const qty = parseFloat(row.querySelector('.qty-in').value)||0;
+    const cost = parseFloat(row.querySelector('.cost-in').value)||0;
+    row.querySelector('.row-total').textContent = '$'+(qty*cost).toFixed(2);
+    calcPOTotal();
+  }
+
+  function calcPOTotal() {
+    let total = 0;
+    document.querySelectorAll('.row-total').forEach(el => {
+      total += parseFloat(el.textContent.replace('$',''))||0;
+    });
+    document.getElementById('poTotal').textContent = '$'+total.toFixed(2);
+  }
+
+  function addRow() {
+    const tbody = document.getElementById('poItems');
+    const first = tbody.querySelector('.po-row');
+    const row = first.cloneNode(true);
+    row.querySelector('.product-sel').value = '';
+    row.querySelector('.qty-in').value = '1';
+    row.querySelector('.cost-in').value = '0';
+    row.querySelector('.row-total').textContent = '$0.00';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-sm btn-outline-danger';
+    removeBtn.innerHTML = '<i class="bi bi-x"></i>';
+    removeBtn.onclick = function() { row.remove(); calcPOTotal(); };
+    row.querySelector('td:last-child').appendChild(removeBtn);
+    tbody.appendChild(row);
+  }
+</script>
+{% endblock %}

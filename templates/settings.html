@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row g-4">
+    <!-- Shop Settings -->
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header bg-primary text-white"><i class="bi bi-shop me-2"></i>Shop Details</div>
+        <div class="card-body">
+          <form method="post">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Shop Name *</label>
+                <input name="name" class="form-control" required value="{{ settings.name or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Tagline / Slogan</label>
+                <input name="tagline" class="form-control" value="{{ settings.tagline or '' }}">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Address</label>
+                <textarea name="address" class="form-control" rows="2">{{ settings.address or '' }}</textarea>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Phone</label>
+                <input name="phone" class="form-control" value="{{ settings.phone or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Email</label>
+                <input type="email" name="email" class="form-control" value="{{ settings.email or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Currency</label>
+                <select name="currency" class="form-select">
+                  <option {% if settings.currency=='USD' %}selected{% endif %}>USD</option>
+                  <option {% if settings.currency=='ZWL' %}selected{% endif %}>ZWL</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Receipt Footer Message</label>
+                <input name="receipt_footer" class="form-control" value="{{ settings.receipt_footer or 'Thank you for shopping with us!' }}">
+              </div>
+            </div>
+
+            <hr><h6 class="fw-bold text-muted mt-3">ZIMRA Tax Settings</h6>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">ZIMRA TIN (Tax Identification Number)</label>
+                <input name="zimra_tin" class="form-control" placeholder="e.g. 2001234567" value="{{ settings.zimra_tin or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">VAT Rate (%)</label>
+                <div class="input-group">
+                  <input type="number" name="vat_rate" class="form-control" value="{{ settings.vat_rate or 15 }}" min="0" max="30" step="0.1">
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="form-check form-switch mt-2">
+                  <input class="form-check-input" type="checkbox" name="vat_registered" id="vatReg"
+                    {% if settings.vat_registered %}checked{% endif %}>
+                  <label class="form-check-label fw-semibold" for="vatReg">VAT Registered</label>
+                </div>
+                <small class="text-muted">When enabled, VAT is calculated on all standard-rated sales</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">VAT Registration Number</label>
+                <input name="vat_number" class="form-control" value="{{ settings.vat_number or '' }}">
+              </div>
+            </div>
+
+            <hr><h6 class="fw-bold text-muted mt-3">EcoCash Merchant Settings</h6>
+            <div class="alert alert-info py-2">
+              <i class="bi bi-info-circle me-2"></i>
+              Get your merchant credentials from the
+              <strong>Econet EcoCash Merchant Portal</strong>.
+              In <strong>test mode</strong> no real transactions occur — safe for setup and training.
+            </div>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Merchant Code</label>
+                <input name="ecocash_merchant_code" class="form-control" value="{{ settings.ecocash_merchant_code or '' }}" placeholder="From Econet merchant portal">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Merchant PIN</label>
+                <input type="password" name="ecocash_merchant_pin" class="form-control" value="{{ settings.ecocash_merchant_pin or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Mode</label>
+                <select name="ecocash_mode" class="form-select">
+                  <option value="test" {% if settings.ecocash_mode != 'production' %}selected{% endif %}>Test Mode (Simulated)</option>
+                  <option value="production" {% if settings.ecocash_mode == 'production' %}selected{% endif %}>Production (Live Transactions)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-4">
+              <button type="submit" class="btn btn-primary btn-lg">
+                <i class="bi bi-save me-2"></i>Save All Settings
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Categories -->
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-header bg-success text-white"><i class="bi bi-tags me-2"></i>Product Categories</div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('category_add') }}" class="d-flex gap-2 mb-3">
+            <input name="name" class="form-control" placeholder="New category name" required>
+            <button class="btn btn-success text-nowrap"><i class="bi bi-plus"></i> Add</button>
+          </form>
+          <ul class="list-group">
+            {% for c in categories %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              {{ c.name }}
+              <form method="post" action="{{ url_for('category_delete', cid=c.id) }}"
+                    onsubmit="return confirm('Delete category {{ c.name }}?')">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x"></i></button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <!-- Quick Help -->
+      <div class="card mt-4">
+        <div class="card-header"><i class="bi bi-question-circle me-2"></i>Quick Reference</div>
+        <div class="card-body">
+          <h6 class="fw-bold">ZIMRA VAT Classifications</h6>
+          <ul class="small text-muted">
+            <li><strong>Standard (15%):</strong> Most goods & services</li>
+            <li><strong>Zero-Rated (0%):</strong> Basic foodstuffs (mealie meal, bread, milk), medicines, agricultural inputs, exported goods</li>
+            <li><strong>Exempt:</strong> Financial services, educational services, residential property rentals</li>
+          </ul>
+          <hr>
+          <h6 class="fw-bold">EcoCash Merchant Numbers</h6>
+          <ul class="small text-muted">
+            <li>Econet: 077X / 078X numbers</li>
+            <li>Enter full 10-digit local number in POS</li>
+            <li>Customer will receive USSD prompt on their phone</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

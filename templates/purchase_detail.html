@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}PO {{ po.reference }}{% endblock %}
+{% block page_title %}Purchase Order: {{ po.reference }}{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-xl-9">
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="row">
+            <div class="col-md-3"><strong>Supplier</strong><br>{{ po.supplier_name or 'Not specified' }}</div>
+            <div class="col-md-3"><strong>Created</strong><br>{{ po.created_at[:10] }}</div>
+            <div class="col-md-3"><strong>Expected</strong><br>{{ po.expected_date or '—' }}</div>
+            <div class="col-md-3"><strong>Status</strong><br>
+              {% if po.status == 'received' %}<span class="badge bg-success fs-6">Received</span>
+              {% elif po.status == 'partial' %}<span class="badge bg-warning text-dark fs-6">Partial</span>
+              {% else %}<span class="badge bg-info text-dark fs-6">Pending</span>{% endif %}
+            </div>
+          </div>
+          {% if po.notes %}<div class="mt-2 text-muted"><em>{{ po.notes }}</em></div>{% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><i class="bi bi-list-ul me-2"></i>Order Items</div>
+        <form method="post" action="{{ url_for('purchase_receive', po_id=po.id) }}">
+          <div class="card-body p-0">
+            <table class="table mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Product</th><th>Ordered</th><th>Received So Far</th>
+                  <th>Remaining</th><th>Unit Cost</th><th>Total</th>
+                  {% if po.status != 'received' %}<th>Receive Now</th>{% endif %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in items %}
+                {% set remaining = item.quantity - item.received_quantity %}
+                <tr>
+                  <td>{{ item.product_name }}</td>
+                  <td>{{ item.quantity }}</td>
+                  <td>{{ item.received_quantity }}</td>
+                  <td class="{{ 'text-success' if remaining <= 0 else 'text-warning fw-bold' }}">{{ remaining }}</td>
+                  <td>${{ '%.2f'|format(item.unit_cost) }}</td>
+                  <td>${{ '%.2f'|format(item.total) }}</td>
+                  {% if po.status != 'received' %}
+                  <td>
+                    <input type="number" name="recv_{{ item.id }}" class="form-control form-control-sm"
+                      style="width:90px" min="0" max="{{ remaining }}" step="0.01"
+                      value="{{ remaining if remaining > 0 else 0 }}"
+                      {{ 'disabled' if remaining <= 0 else '' }}>
+                  </td>
+                  {% endif %}
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr class="table-light">
+                  <td colspan="5" class="text-end fw-bold">Total:</td>
+                  <td class="fw-bold">${{ '%.2f'|format(po.total) }}</td>
+                  {% if po.status != 'received' %}<td></td>{% endif %}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {% if po.status != 'received' %}
+          <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-box-arrow-in-down me-1"></i>Mark Items Received & Update Stock
+            </button>
+            <a href="{{ url_for('purchases') }}" class="btn btn-outline-secondary">Back</a>
+          </div>
+          {% else %}
+          <div class="card-footer">
+            <a href="{{ url_for('purchases') }}" class="btn btn-outline-secondary">Back to Purchase Orders</a>
+          </div>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

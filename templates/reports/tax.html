@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}ZIMRA VAT Report{% endblock %}
+{% block page_title %}ZIMRA VAT Report{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="card mb-4">
+    <div class="card-body py-2">
+      <form class="row g-2 align-items-end" method="get">
+        <div class="col-auto"><label class="form-label small mb-1">From</label>
+          <input type="date" name="from" class="form-control form-control-sm" value="{{ date_from }}"></div>
+        <div class="col-auto"><label class="form-label small mb-1">To</label>
+          <input type="date" name="to" class="form-control form-control-sm" value="{{ date_to }}"></div>
+        <div class="col-auto"><button class="btn btn-sm btn-primary">Generate Report</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Shop info card -->
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card border-warning">
+        <div class="card-header bg-warning text-dark">
+          <i class="bi bi-shield-check me-2"></i>ZIMRA Registration Details
+        </div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <tr><td class="fw-semibold">Business Name</td><td>{{ settings.name }}</td></tr>
+            <tr><td class="fw-semibold">ZIMRA TIN</td><td>{{ settings.zimra_tin or '<span class="text-danger">Not set — configure in Settings</span>'|safe }}</td></tr>
+            <tr><td class="fw-semibold">VAT Registration</td>
+              <td>{% if settings.vat_registered %}<span class="badge bg-success">Registered</span>
+                  {% else %}<span class="badge bg-secondary">Not Registered</span>{% endif %}</td></tr>
+            <tr><td class="fw-semibold">VAT Number</td><td>{{ settings.vat_number or '—' }}</td></tr>
+            <tr><td class="fw-semibold">VAT Rate</td><td>{{ vat_rate }}%</td></tr>
+            <tr><td class="fw-semibold">Report Period</td><td>{{ date_from }} to {{ date_to }}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="row g-3">
+        <div class="col-6">
+          <div class="stat-card bg-warning-g">
+            <div class="stat-label">Total VAT Collected</div>
+            <div class="stat-value">${{ '%.2f'|format(total_tax) }}</div>
+            <small class="opacity-75">Output VAT</small>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="stat-card bg-primary-g">
+            <div class="stat-label">Gross Sales (incl. VAT)</div>
+            <div class="stat-value">${{ '%.2f'|format(total_sales) }}</div>
+            <small class="opacity-75">All transactions</small>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="alert alert-warning mb-0">
+            <i class="bi bi-info-circle me-2"></i>
+            <strong>VAT Return Note:</strong> This report shows output VAT collected from customers.
+            Submit your VAT return to ZIMRA by the 25th of the following month.
+            Deduct input VAT paid on purchases to calculate net VAT payable.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VAT Breakdown by type -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="bi bi-table me-2"></i>VAT Breakdown by Tax Classification</div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Tax Classification</th>
+            <th>Rate</th>
+            <th>Gross Sales (incl. VAT)</th>
+            <th>Net Sales (excl. VAT)</th>
+            <th>VAT Amount</th>
+            <th>ZIMRA Schedule</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tax_summary %}
+          <tr>
+            <td>
+              {% if t.tax_type == 'standard' %}
+                <span class="badge bg-primary">Standard Rate</span>
+              {% elif t.tax_type == 'zero' %}
+                <span class="badge bg-success">Zero-Rated</span>
+              {% else %}
+                <span class="badge bg-secondary">Exempt</span>
+              {% endif %}
+            </td>
+            <td>{{ t.tax_rate }}%</td>
+            <td>${{ '%.2f'|format(t.gross_sales or 0) }}</td>
+            <td>${{ '%.2f'|format(t.net_sales or 0) }}</td>
+            <td class="fw-bold text-warning">${{ '%.2f'|format(t.tax_collected or 0) }}</td>
+            <td>
+              {% if t.tax_type == 'standard' %}Schedule 1 — Standard Supplies
+              {% elif t.tax_type == 'zero' %}Schedule 2 — Zero-Rated Supplies
+              {% else %}Schedule 3 — Exempt Supplies{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-3">No sales in this period</td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-dark">
+          <tr>
+            <td colspan="2"><strong>TOTALS</strong></td>
+            <td><strong>${{ '%.2f'|format(total_sales) }}</strong></td>
+            <td><strong>${{ '%.2f'|format(total_sales - total_tax) }}</strong></td>
+            <td><strong>${{ '%.2f'|format(total_tax) }}</strong></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- VAT Return summary -->
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="card border-warning">
+        <div class="card-header bg-warning text-dark fw-bold">
+          <i class="bi bi-file-text me-2"></i>ZIMRA VAT Return Summary (Form VAT7)
+        </div>
+        <div class="card-body p-0">
+          <table class="table mb-0">
+            <tr>
+              <td>Box 1: Standard Rated Supplies (excl. VAT)</td>
+              <td class="text-end fw-bold">
+                ${{ '%.2f'|format(tax_summary|selectattr('tax_type','eq','standard')|map(attribute='net_sales')|sum) }}
+              </td>
+            </tr>
+            <tr>
+              <td>Box 2: Zero-Rated Supplies</td>
+              <td class="text-end">
+                ${{ '%.2f'|format(tax_summary|selectattr('tax_type','eq','zero')|map(attribute='gross_sales')|sum) }}
+              </td>
+            </tr>
+            <tr>
+              <td>Box 3: Exempt Supplies</td>
+              <td class="text-end">
+                ${{ '%.2f'|format(tax_summary|selectattr('tax_type','eq','exempt')|map(attribute='gross_sales')|sum) }}
+              </td>
+            </tr>
+            <tr class="table-warning">
+              <td><strong>Box 4: Output VAT (Tax Collected)</strong></td>
+              <td class="text-end fw-bold text-danger">${{ '%.2f'|format(total_tax) }}</td>
+            </tr>
+            <tr>
+              <td class="text-muted">Box 5: Input VAT (from purchase invoices)</td>
+              <td class="text-end text-muted">Record manually from supplier invoices</td>
+            </tr>
+            <tr class="table-success">
+              <td><strong>Net VAT Payable to ZIMRA</strong></td>
+              <td class="text-end fw-bold">Box 4 − Box 5</td>
+            </tr>
+          </table>
+        </div>
+        <div class="card-footer text-center">
+          <button onclick="window.print()" class="btn btn-warning btn-sm">
+            <i class="bi bi-printer me-1"></i>Print VAT Report
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

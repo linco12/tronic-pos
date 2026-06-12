@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+{% block content %}
+<div class="section">
+
+  <!-- Stats -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="stat-card bg-primary-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div><div class="stat-label">Total Users</div><div class="stat-value">{{ users|length }}</div></div>
+          <i class="bi bi-people stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-success-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div><div class="stat-label">Active Users</div>
+          <div class="stat-value">{{ users|selectattr('is_active','eq',1)|list|length }}</div></div>
+          <i class="bi bi-person-check stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-warning-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div><div class="stat-label">Total Shops</div><div class="stat-value">{{ shops|length }}</div></div>
+          <i class="bi bi-shop stat-icon"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="stat-card bg-danger-g">
+        <div class="d-flex justify-content-between align-items-start">
+          <div><div class="stat-label">Suspended</div>
+          <div class="stat-value">{{ users|selectattr('is_active','eq',0)|list|length }}</div></div>
+          <i class="bi bi-person-x stat-icon"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Users table -->
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-people me-2"></i>Shop Owners</span>
+          <a href="{{ url_for('admin_user_new') }}" class="btn btn-sm btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>New User
+          </a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Name</th><th>Email</th><th>Shops</th><th>Status</th><th>Joined</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr class="{{ 'text-muted' if not u.is_active else '' }}">
+                <td>
+                  <strong>{{ u.name }}</strong>
+                  {% if u.role == 'admin' %}<span class="badge bg-danger ms-1">Admin</span>{% endif %}
+                </td>
+                <td><small>{{ u.email }}</small></td>
+                <td>{{ u.shop_count }}</td>
+                <td>
+                  {% if u.is_active %}<span class="badge bg-success">Active</span>
+                  {% else %}<span class="badge bg-danger">Suspended</span>{% endif %}
+                </td>
+                <td><small>{{ u.created_at[:10] }}</small></td>
+                <td>
+                  <a href="{{ url_for('admin_user_edit', uid=u.id) }}" class="btn btn-sm btn-outline-primary me-1">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  {% if u.role != 'admin' %}
+                  <form method="post" action="{{ url_for('admin_user_toggle', uid=u.id) }}" class="d-inline">
+                    <button class="btn btn-sm {{ 'btn-outline-danger' if u.is_active else 'btn-outline-success' }}"
+                      title="{{ 'Suspend' if u.is_active else 'Activate' }}">
+                      <i class="bi bi-{{ 'pause-circle' if u.is_active else 'play-circle' }}"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted py-3">No users yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shops table -->
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-shop me-2"></i>All Shops</span>
+          <a href="{{ url_for('shop_new') }}" class="btn btn-sm btn-success">
+            <i class="bi bi-plus-lg me-1"></i>New Shop
+          </a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr><th>Shop</th><th>Owner</th><th>Created</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for s in shops %}
+              <tr>
+                <td>
+                  <strong>{{ s.name }}</strong>
+                  {% if s.address %}<br><small class="text-muted">{{ s.address[:30] }}</small>{% endif %}
+                </td>
+                <td><small>{{ s.owner_name }}</small></td>
+                <td><small>{{ s.created_at[:10] }}</small></td>
+                <td>
+                  <form method="post" action="{{ url_for('switch_shop', shop_id=s.id) }}" class="d-inline">
+                    <button class="btn btn-sm btn-outline-primary" title="Enter shop">
+                      <i class="bi bi-arrow-right-circle"></i>
+                    </button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin_shop_delete', shop_id=s.id) }}"
+                        class="d-inline" onsubmit="return confirm('Delete shop {{ s.name }} and ALL its data?')">
+                    <button class="btn btn-sm btn-outline-danger ms-1" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-3">No shops yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
