@@ -1,6 +1,8 @@
 import os
 import uuid
 import json
+from dotenv import load_dotenv
+load_dotenv()
 import csv
 import io
 from datetime import datetime, date, timedelta
