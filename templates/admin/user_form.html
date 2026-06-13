@@ -60,17 +60,31 @@
 
             {% if not user %}
             <hr class="my-4">
-            <h6 class="fw-semibold mb-2"><i class="bi bi-shop me-1"></i>Create a shop for this owner (optional)</h6>
-            <div class="mb-3">
-              <label class="form-label">Shop Name</label>
-              <input name="new_shop_name" class="form-control" placeholder="e.g. Moyo General Store">
-              <div class="form-text">Leave blank to let the owner set up their shop later.</div>
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-semibold mb-0"><i class="bi bi-shop me-1"></i>Shops for this owner</h6>
+              <div class="d-flex gap-2 align-items-center">
+                <label class="form-label mb-0 text-muted small">Number of shops:</label>
+                <select id="shopCount" class="form-select form-select-sm" style="width:80px" onchange="updateShopFields()">
+                  <option>0</option>
+                  <option selected>1</option>
+                  <option>2</option>
+                  <option>3</option>
+                  <option>4</option>
+                  <option>5</option>
+                </select>
+              </div>
             </div>
+            <div id="shopFields" class="row g-2">
+              <div class="col-md-6">
+                <input name="shop_name[]" class="form-control" placeholder="Shop 1 name" required>
+              </div>
+            </div>
+            <div class="form-text mt-1">Each shop gets default categories and can have its own EcoCash details configured later.</div>
             {% endif %}
 
             <div class="mt-4 d-flex gap-2">
               <button type="submit" class="btn btn-primary">
-                <i class="bi bi-save me-1"></i>{{ 'Save Changes' if user else 'Create Account' }}
+                <i class="bi bi-save me-1"></i>{{ 'Save Changes' if user else 'Create Account & Shops' }}
               </button>
               <a href="{{ url_for('admin_index') }}" class="btn btn-outline-secondary">Cancel</a>
             </div>
@@ -80,4 +94,20 @@
     </div>
   </div>
 </div>
+
+{% if not user %}
+<script>
+function updateShopFields() {
+  const count = parseInt(document.getElementById('shopCount').value) || 0;
+  const container = document.getElementById('shopFields');
+  container.innerHTML = '';
+  for (let i = 1; i <= count; i++) {
+    const div = document.createElement('div');
+    div.className = 'col-md-6';
+    div.innerHTML = `<input name="shop_name[]" class="form-control" placeholder="Shop ${i} name" ${i===1?'required':''}>`;
+    container.appendChild(div);
+  }
+}
+</script>
+{% endif %}
 {% endblock %}

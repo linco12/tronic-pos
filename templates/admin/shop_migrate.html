@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Migrate — {{ source.name }}{% endblock %}
+{% block page_title %}Migrate Shop Records{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <a href="{{ url_for('admin_index') }}" class="btn btn-sm btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left me-1"></i>Back to Admin
+      </a>
+
+      <div class="card border-warning mb-4">
+        <div class="card-header bg-warning bg-opacity-25 fw-semibold">
+          <i class="bi bi-arrow-left-right me-2"></i>Source Shop
+        </div>
+        <div class="card-body">
+          <h5 class="mb-1">{{ source.name }}</h5>
+          <div class="text-muted">Owner: {{ source.owner_name }}</div>
+          {% if source.address %}<div class="text-muted small">{{ source.address }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="alert alert-danger">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>This will move ALL records</strong> — products, sales, expenses, suppliers, customers,
+        purchase orders, and stock adjustments — from <strong>{{ source.name }}</strong> into the
+        destination shop you select. Staff assigned to this shop will also be reassigned.
+        The source shop will then be suspended or deleted based on your choice.
+      </div>
+
+      <div class="card">
+        <div class="card-header fw-semibold">Migration Options</div>
+        <div class="card-body">
+          <form method="post" onsubmit="return confirm('Move all records from {{ source.name }}? This cannot be undone.')">
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Move all records to:</label>
+              <select name="target_shop_id" class="form-select" required>
+                <option value="">— Select destination shop —</option>
+                {% for s in shops %}
+                <option value="{{ s.id }}">
+                  {{ s.name }} — {{ s.owner_name }}
+                  {% if not s.is_active %} (suspended){% endif %}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-semibold">After migration, what should happen to <em>{{ source.name }}</em>?</label>
+              <div class="d-flex flex-column gap-2">
+                <div class="form-check p-3 border rounded">
+                  <input class="form-check-input" type="radio" name="after_action"
+                    id="actionSuspend" value="suspend" checked>
+                  <label class="form-check-label" for="actionSuspend">
+                    <strong><i class="bi bi-pause-circle text-warning me-1"></i>Suspend the shop</strong>
+                    <div class="text-muted small">Keep it in the system but deactivate it. Can be reactivated later.</div>
+                  </label>
+                </div>
+                <div class="form-check p-3 border rounded border-danger">
+                  <input class="form-check-input" type="radio" name="after_action"
+                    id="actionDelete" value="delete">
+                  <label class="form-check-label" for="actionDelete">
+                    <strong><i class="bi bi-trash text-danger me-1"></i>Permanently delete the shop</strong>
+                    <div class="text-muted small">Remove the shop entry entirely. Records are already moved to the destination.</div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-warning fw-semibold">
+                <i class="bi bi-arrow-left-right me-2"></i>Migrate Records
+              </button>
+              <a href="{{ url_for('admin_index') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

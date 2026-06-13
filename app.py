@@ -133,7 +133,7 @@ def inject_globals():
                 user_shops = [dict(row)]
     else:
         user_shops = [dict(r) for r in db.execute(
-            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (session['user_id'],)
+            "SELECT * FROM shops WHERE owner_id=? AND is_active=1 ORDER BY name", (session['user_id'],)
         ).fetchall()]
 
     if sid():
@@ -239,7 +239,7 @@ def select_shop():
         ).fetchall()]
     else:
         shops = [dict(r) for r in db.execute(
-            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (session['user_id'],)
+            "SELECT * FROM shops WHERE owner_id=? AND is_active=1 ORDER BY name", (session['user_id'],)
         ).fetchall()]
     db.close()
 
@@ -332,14 +332,22 @@ def shop_new():
 def admin_index():
     db = get_db()
     users = [dict(r) for r in db.execute(
-        """SELECT u.*, COUNT(s.id) as shop_count
-           FROM users u LEFT JOIN shops s ON s.owner_id=u.id
-           GROUP BY u.id ORDER BY u.created_at DESC"""
+        """SELECT u.*,
+                  COUNT(DISTINCT s.id) as shop_count,
+                  creator.name as created_by_name
+           FROM users u
+           LEFT JOIN shops s ON s.owner_id=u.id
+           LEFT JOIN users creator ON u.created_by=creator.id
+           WHERE u.role != 'admin'
+           GROUP BY u.id ORDER BY u.role, u.name"""
     ).fetchall()]
     shops = [dict(r) for r in db.execute(
-        """SELECT s.*, u.name as owner_name, u.email as owner_email
+        """SELECT s.*, u.name as owner_name, u.email as owner_email,
+                  (SELECT COUNT(*) FROM sales WHERE shop_id=s.id AND status='completed') as sale_count,
+                  (SELECT COUNT(*) FROM products WHERE shop_id=s.id AND is_active=1) as product_count,
+                  (SELECT COALESCE(SUM(total),0) FROM sales WHERE shop_id=s.id AND status='completed') as total_revenue
            FROM shops s JOIN users u ON s.owner_id=u.id
-           ORDER BY s.created_at DESC"""
+           ORDER BY s.is_active DESC, s.name"""
     ).fetchall()]
     db.close()
     return render_template('admin/index.html', users=users, shops=shops)
@@ -372,18 +380,18 @@ def admin_user_new():
                     (email, name, generate_password_hash(password), 'owner', can_create)
                 )
                 new_uid = cur.lastrowid
-                # Optionally create a shop for this owner right away
-                shop_name = f.get('new_shop_name', '').strip()
-                if shop_name:
+                # Create each shop specified by the admin
+                shop_names = [n.strip() for n in request.form.getlist('shop_name[]') if n.strip()]
+                for sname in shop_names:
                     cur.execute(
                         "INSERT INTO shops (owner_id, name, currency) VALUES (?,?,?)",
-                        (new_uid, shop_name, 'USD')
+                        (new_uid, sname, 'USD')
                     )
-                    new_shop_id = cur.lastrowid
-                    seed_default_categories(db, new_shop_id)
+                    seed_default_categories(db, cur.lastrowid)
                 db.commit()
                 db.close()
-                flash(f'Owner account created for {email}.', 'success')
+                created = f" with {len(shop_names)} shop(s)" if shop_names else ""
+                flash(f'Owner account created for {email}{created}.', 'success')
                 return redirect(url_for('admin_index'))
     db.close()
     return render_template('admin/user_form.html', user=None, all_shops=all_shops)
@@ -440,12 +448,119 @@ def admin_shop_delete(shop_id):
     db.execute("DELETE FROM shops WHERE id=?", (shop_id,))
     db.commit()
     db.close()
-    # Clear session if admin was operating that shop
     if session.get('shop_id') == shop_id:
         session.pop('shop_id', None)
         session.pop('shop_name', None)
-    flash('Shop deleted.', 'info')
+    flash('Shop and all its records deleted.', 'info')
     return redirect(url_for('admin_index'))
+
+
+@app.route('/admin/shops/<int:shop_id>/suspend', methods=['POST'])
+@admin_required
+def admin_shop_suspend(shop_id):
+    db = get_db()
+    shop = db.execute("SELECT * FROM shops WHERE id=?", (shop_id,)).fetchone()
+    if shop:
+        new_status = 0 if shop['is_active'] else 1
+        db.execute("UPDATE shops SET is_active=? WHERE id=?", (new_status, shop_id))
+        db.commit()
+        word = 'reactivated' if new_status else 'suspended'
+        flash(f'Shop "{shop["name"]}" {word}.', 'success')
+        if new_status == 0 and session.get('shop_id') == shop_id:
+            session.pop('shop_id', None)
+            session.pop('shop_name', None)
+    db.close()
+    return redirect(url_for('admin_index'))
+
+
+@app.route('/admin/shops/<int:shop_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def admin_shop_edit(shop_id):
+    db = get_db()
+    shop = db.execute(
+        "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id WHERE s.id=?",
+        (shop_id,)
+    ).fetchone()
+    if not shop:
+        flash('Shop not found.', 'danger')
+        db.close()
+        return redirect(url_for('admin_index'))
+    owners = [dict(r) for r in db.execute(
+        "SELECT id, name, email FROM users WHERE role='owner' AND is_active=1 ORDER BY name"
+    ).fetchall()]
+    if request.method == 'POST':
+        f = request.form
+        db.execute(
+            """UPDATE shops SET name=?, tagline=?, address=?, phone=?, email=?,
+               zimra_tin=?, vat_registered=?, vat_number=?, vat_rate=?,
+               currency=?, ecocash_merchant_code=?, ecocash_merchant_pin=?,
+               ecocash_mode=?, receipt_footer=?, owner_id=? WHERE id=?""",
+            (f.get('name', ''), f.get('tagline', ''), f.get('address', ''),
+             f.get('phone', ''), f.get('email', ''),
+             f.get('zimra_tin', ''), 1 if f.get('vat_registered') else 0,
+             f.get('vat_number', ''), float(f.get('vat_rate', 15.0)),
+             f.get('currency', 'USD'),
+             f.get('ecocash_merchant_code', ''), f.get('ecocash_merchant_pin', ''),
+             f.get('ecocash_mode', 'test'), f.get('receipt_footer', ''),
+             int(f.get('owner_id', shop['owner_id'])), shop_id)
+        )
+        db.commit()
+        db.close()
+        flash('Shop updated.', 'success')
+        return redirect(url_for('admin_index'))
+    db.close()
+    return render_template('admin/shop_edit.html', shop=dict(shop), owners=owners)
+
+
+@app.route('/admin/shops/<int:shop_id>/migrate', methods=['GET', 'POST'])
+@admin_required
+def admin_shop_migrate(shop_id):
+    db = get_db()
+    source = db.execute(
+        "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id WHERE s.id=?",
+        (shop_id,)
+    ).fetchone()
+    if not source:
+        flash('Shop not found.', 'danger')
+        db.close()
+        return redirect(url_for('admin_index'))
+    other_shops = [dict(r) for r in db.execute(
+        """SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id
+           WHERE s.id!=? ORDER BY s.name""",
+        (shop_id,)
+    ).fetchall()]
+    if request.method == 'POST':
+        target_id = int(request.form.get('target_shop_id', 0))
+        after_action = request.form.get('after_action', 'suspend')
+        if not target_id:
+            flash('Select a destination shop.', 'danger')
+            db.close()
+            return render_template('admin/shop_migrate.html', source=dict(source), shops=other_shops)
+        # Migrate all shop-scoped records
+        for tbl in ('products', 'categories', 'suppliers', 'customers', 'sales',
+                    'expenses', 'purchase_orders', 'stock_adjustments',
+                    'ecocash_transactions', 'user_sessions'):
+            try:
+                db.execute(f"UPDATE {tbl} SET shop_id=? WHERE shop_id=?", (target_id, shop_id))
+            except Exception:
+                pass
+        # Reassign staff
+        db.execute("UPDATE users SET assigned_shop_id=? WHERE assigned_shop_id=?",
+                   (target_id, shop_id))
+        if after_action == 'delete':
+            db.execute("DELETE FROM shops WHERE id=?", (shop_id,))
+            flash('Records migrated and shop deleted.', 'success')
+        else:
+            db.execute("UPDATE shops SET is_active=0 WHERE id=?", (shop_id,))
+            flash('Records migrated and shop suspended.', 'success')
+        db.commit()
+        db.close()
+        if session.get('shop_id') == shop_id:
+            session.pop('shop_id', None)
+            session.pop('shop_name', None)
+        return redirect(url_for('admin_index'))
+    db.close()
+    return render_template('admin/shop_migrate.html', source=dict(source), shops=other_shops)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

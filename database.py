@@ -222,14 +222,16 @@ def init_db():
 
     conn.commit()
 
-    # Add new columns to users table if they don't exist yet (idempotent migration)
-    for col, typedef in [
-        ('assigned_shop_id', 'INTEGER REFERENCES shops(id)'),
-        ('created_by',       'INTEGER REFERENCES users(id)'),
-        ('can_create_shops', 'INTEGER NOT NULL DEFAULT 0'),
-    ]:
+    # Idempotent column migrations
+    migrations = [
+        ("users", "assigned_shop_id", "INTEGER REFERENCES shops(id)"),
+        ("users", "created_by",       "INTEGER REFERENCES users(id)"),
+        ("users", "can_create_shops", "INTEGER NOT NULL DEFAULT 0"),
+        ("shops", "is_active",        "INTEGER NOT NULL DEFAULT 1"),
+    ]
+    for table, col, typedef in migrations:
         try:
-            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {typedef}")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typedef}")
             conn.commit()
         except Exception:
             pass
