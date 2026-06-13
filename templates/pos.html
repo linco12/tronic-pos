@@ -39,7 +39,9 @@
         <span class="input-group-text">Discount $</span>
         <input type="number" id="discountInput" class="form-control" value="0" min="0" step="0.01">
         <span class="input-group-text">Cashier</span>
-        <input type="text" id="cashierInput" class="form-control" value="Admin">
+        <input type="text" id="cashierInput" class="form-control"
+          value="{{ current_user.name if current_user else 'Admin' }}"
+          {% if current_user and current_user.role == 'staff' %}readonly{% endif %}>
       </div>
     </div>
 

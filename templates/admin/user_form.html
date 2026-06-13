@@ -1,35 +1,35 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if user else 'New' }} User{% endblock %}
+{% block title %}{{ 'Edit' if user else 'New' }} Owner{% endblock %}
 {% block page_title %}{{ 'Edit' if user else 'Create' }} Shop Owner Account{% endblock %}
 {% block content %}
 <div class="section">
   <div class="row justify-content-center">
-    <div class="col-lg-6">
+    <div class="col-lg-7">
       <div class="card">
         <div class="card-header bg-primary text-white">
-          <i class="bi bi-person-plus me-2"></i>{{ 'Edit' if user else 'New' }} User Account
+          <i class="bi bi-person-plus me-2"></i>{{ 'Edit' if user else 'New' }} Owner Account
         </div>
         <div class="card-body">
           {% if not user %}
           <div class="alert alert-info py-2">
             <i class="bi bi-info-circle me-1"></i>
-            After creating the account, share the password with the shop owner so they can log in and set up their shop.
+            After creating the account, share the login details with the shop owner securely.
           </div>
           {% endif %}
           <form method="post">
             <div class="row g-3">
-              <div class="col-12">
-                <label class="form-label fw-semibold">Full Name</label>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Full Name *</label>
                 <input name="name" class="form-control" required
                   placeholder="e.g. John Moyo"
                   value="{{ user.name if user else '' }}">
               </div>
-              <div class="col-12">
+              <div class="col-md-6">
                 <label class="form-label fw-semibold">Email Address *</label>
                 <input type="email" name="email" class="form-control" required
-                  placeholder="shopowner@email.com"
+                  placeholder="owner@email.com"
                   value="{{ user.email if user else '' }}">
-                <div class="form-text">This is their login username.</div>
+                <div class="form-text">Used as their login username.</div>
               </div>
               <div class="col-12">
                 <label class="form-label fw-semibold">
@@ -44,11 +44,30 @@
                     <i class="bi bi-eye"></i>
                   </button>
                 </div>
-                {% if not user %}
-                <div class="form-text">Minimum 8 characters recommended. Share this securely with the user.</div>
-                {% endif %}
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="can_create_shops"
+                    id="canCreateShops"
+                    {% if user and user.get('can_create_shops') %}checked{% endif %}>
+                  <label class="form-check-label fw-semibold" for="canCreateShops">
+                    Allow this owner to create their own shops
+                  </label>
+                  <div class="form-text">If unchecked, only admin can create shops for them.</div>
+                </div>
               </div>
             </div>
+
+            {% if not user %}
+            <hr class="my-4">
+            <h6 class="fw-semibold mb-2"><i class="bi bi-shop me-1"></i>Create a shop for this owner (optional)</h6>
+            <div class="mb-3">
+              <label class="form-label">Shop Name</label>
+              <input name="new_shop_name" class="form-control" placeholder="e.g. Moyo General Store">
+              <div class="form-text">Leave blank to let the owner set up their shop later.</div>
+            </div>
+            {% endif %}
+
             <div class="mt-4 d-flex gap-2">
               <button type="submit" class="btn btn-primary">
                 <i class="bi bi-save me-1"></i>{{ 'Save Changes' if user else 'Create Account' }}

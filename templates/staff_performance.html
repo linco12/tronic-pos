@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}{{ staff.name }} — Performance{% endblock %}
+{% block page_title %}Staff Performance: {{ staff.name }}{% endblock %}
+{% block content %}
+<div class="section">
+
+  <!-- Back link -->
+  <a href="{{ url_for('staff_list') }}" class="btn btn-sm btn-outline-secondary mb-4">
+    <i class="bi bi-arrow-left me-1"></i>Back to Staff
+  </a>
+
+  <!-- Profile card -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-3">
+        <div class="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center"
+          style="width:56px;height:56px;font-size:1.6rem">
+          <i class="bi bi-person text-primary"></i>
+        </div>
+        <div>
+          <h4 class="mb-0">{{ staff.name }}</h4>
+          <div class="text-muted">{{ staff.email }}</div>
+          <div class="text-muted"><i class="bi bi-shop me-1"></i>{{ shop_name }}</div>
+        </div>
+        <div class="ms-auto text-end">
+          <div class="fs-4 fw-bold text-success">${{ "%.2f"|format(stats.total) }}</div>
+          <div class="text-muted">Total Revenue</div>
+          <div class="fw-bold text-primary">{{ stats.cnt }} sales</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Session Log -->
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header fw-semibold">
+          <i class="bi bi-clock-history me-2"></i>Session Log (last 50)
+        </div>
+        <div class="card-body p-0">
+          {% if sessions_log %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Login</th>
+                  <th>Logout</th>
+                  <th>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in sessions_log %}
+                <tr>
+                  <td class="text-nowrap">{{ s.login_at[:10] }}</td>
+                  <td class="text-nowrap">{{ s.login_at[11:16] }}</td>
+                  <td class="text-nowrap">
+                    {% if s.logout_at %}
+                      {{ s.logout_at[11:16] }}
+                    {% else %}
+                      <span class="badge bg-success">Active</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-nowrap text-muted small">
+                    {% if s.logout_at and s.login_at %}
+                      {% set mins = ((s.logout_at[:16] | replace('T',' ') ) ) %}
+                      —
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-clock"></i> No sessions recorded yet.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sales Made -->
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header fw-semibold">
+          <i class="bi bi-receipt me-2"></i>Sales (last 100)
+        </div>
+        <div class="card-body p-0">
+          {% if sales %}
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Date &amp; Time</th>
+                  <th>Ref</th>
+                  <th>Method</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for sale in sales %}
+                <tr>
+                  <td class="text-nowrap small">{{ sale.created_at[:16] }}</td>
+                  <td class="text-nowrap">
+                    <a href="{{ url_for('receipt', sale_id=sale.id) }}" target="_blank"
+                       class="text-decoration-none small">{{ sale.reference }}</a>
+                  </td>
+                  <td>
+                    {% if sale.payment_method == 'cash' %}
+                      <span class="badge bg-success">Cash</span>
+                    {% elif sale.payment_method == 'ecocash' %}
+                      <span class="badge bg-danger">EcoCash</span>
+                    {% else %}
+                      <span class="badge bg-secondary">{{ sale.payment_method }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end fw-semibold">${{ "%.2f"|format(sale.total) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-center text-muted py-4">
+            <i class="bi bi-cart-x"></i> No sales recorded yet.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -59,6 +59,21 @@ def admin_required(f):
     return decorated
 
 
+def owner_required(f):
+    """Login + shop + blocks staff role from management routes."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.path))
+        if session.get('role') == 'staff':
+            flash('That section is restricted to shop owners.', 'danger')
+            return redirect(url_for('pos'))
+        if not session.get('shop_id'):
+            return redirect(url_for('select_shop'))
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def sid():
@@ -103,12 +118,19 @@ def inject_globals():
     shop = get_shop()
     user_shops = []
     low_stock = 0
+    role = session.get('role')
 
     db = get_db()
-    if session.get('role') == 'admin':
+    if role == 'admin':
         user_shops = [dict(r) for r in db.execute(
             "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id ORDER BY s.name"
         ).fetchall()]
+    elif role == 'staff':
+        assigned_id = session.get('assigned_shop_id')
+        if assigned_id:
+            row = db.execute("SELECT * FROM shops WHERE id=?", (assigned_id,)).fetchone()
+            if row:
+                user_shops = [dict(row)]
     else:
         user_shops = [dict(r) for r in db.execute(
             "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (session['user_id'],)
@@ -126,6 +148,8 @@ def inject_globals():
         'name': session.get('user_name'),
         'email': session.get('user_email'),
         'role': session.get('role'),
+        'can_create_shops': session.get('can_create_shops', 0),
+        'assigned_shop_id': session.get('assigned_shop_id'),
     }
     return dict(shop=shop, user_shops=user_shops,
                 low_stock_count=low_stock, current_user=current_user)
@@ -146,21 +170,54 @@ def login():
         user = db.execute(
             "SELECT * FROM users WHERE email=? AND is_active=1", (email,)
         ).fetchone()
-        db.close()
         if user and check_password_hash(user['password_hash'], password):
+            user = dict(user)
             session.clear()
             session['user_id'] = user['id']
             session['user_name'] = user['name']
             session['user_email'] = user['email']
             session['role'] = user['role']
+            session['can_create_shops'] = user.get('can_create_shops', 0)
+            session['assigned_shop_id'] = user.get('assigned_shop_id')
+
+            c = db.cursor()
+            c.execute(
+                "INSERT INTO user_sessions (user_id, shop_id, ip_address) VALUES (?,?,?)",
+                (user['id'], user.get('assigned_shop_id'), request.remote_addr or '')
+            )
+            session['session_log_id'] = c.lastrowid
+            db.commit()
+
+            if user['role'] == 'staff' and user.get('assigned_shop_id'):
+                shop_row = db.execute(
+                    "SELECT name FROM shops WHERE id=?", (user['assigned_shop_id'],)
+                ).fetchone()
+                session['shop_id'] = user['assigned_shop_id']
+                session['shop_name'] = shop_row['name'] if shop_row else 'My Shop'
+                db.close()
+                return redirect(url_for('pos'))
+
+            db.close()
             next_url = request.args.get('next')
             return redirect(next_url or url_for('select_shop'))
+        db.close()
         flash('Invalid email or password.', 'danger')
     return render_template('login.html')
 
 
 @app.route('/logout')
 def logout():
+    if 'session_log_id' in session:
+        try:
+            db = get_db()
+            db.execute(
+                "UPDATE user_sessions SET logout_at=CURRENT_TIMESTAMP WHERE id=?",
+                (session['session_log_id'],)
+            )
+            db.commit()
+            db.close()
+        except Exception:
+            pass
     session.clear()
     return redirect(url_for('login'))
 
@@ -168,8 +225,15 @@ def logout():
 @app.route('/shops')
 @login_required
 def select_shop():
+    role = session.get('role')
+    if role == 'staff':
+        if session.get('shop_id'):
+            return redirect(url_for('pos'))
+        flash('No shop assigned. Contact your manager.', 'warning')
+        return redirect(url_for('logout'))
+
     db = get_db()
-    if session.get('role') == 'admin':
+    if role == 'admin':
         shops = [dict(r) for r in db.execute(
             "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id ORDER BY s.name"
         ).fetchall()]
@@ -179,8 +243,7 @@ def select_shop():
         ).fetchall()]
     db.close()
 
-    # Non-admin with exactly one shop → auto-select
-    if len(shops) == 1 and session.get('role') != 'admin':
+    if len(shops) == 1 and role != 'admin':
         _set_shop(shops[0])
         return redirect(url_for('pos'))
 
@@ -190,6 +253,8 @@ def select_shop():
 @app.route('/shops/select/<int:shop_id>', methods=['POST'])
 @login_required
 def switch_shop(shop_id):
+    if session.get('role') == 'staff':
+        return redirect(url_for('pos'))
     db = get_db()
     if session.get('role') == 'admin':
         shop = db.execute("SELECT * FROM shops WHERE id=?", (shop_id,)).fetchone()
@@ -213,6 +278,13 @@ def _set_shop(shop):
 @app.route('/shops/new', methods=['GET', 'POST'])
 @login_required
 def shop_new():
+    role = session.get('role')
+    if role == 'staff':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    if role == 'owner' and not session.get('can_create_shops'):
+        flash('You do not have permission to create shops. Ask the admin to create one for you.', 'warning')
+        return redirect(url_for('select_shop'))
     if request.method == 'POST':
         f = request.form
         owner_id = session['user_id']
@@ -276,29 +348,45 @@ def admin_index():
 @app.route('/admin/users/new', methods=['GET', 'POST'])
 @admin_required
 def admin_user_new():
+    db = get_db()
+    all_shops = [dict(r) for r in db.execute(
+        "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id ORDER BY s.name"
+    ).fetchall()]
     if request.method == 'POST':
         f = request.form
         email = f.get('email', '').strip().lower()
         name = f.get('name', '').strip()
         password = f.get('password', '').strip()
+        can_create = 1 if f.get('can_create_shops') else 0
         if not email or not password:
             flash('Email and password are required.', 'danger')
         else:
-            db = get_db()
             existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
             if existing:
                 flash('That email is already registered.', 'danger')
                 db.close()
             else:
-                db.execute(
-                    "INSERT INTO users (email, name, password_hash, role) VALUES (?,?,?,?)",
-                    (email, name, generate_password_hash(password), 'owner')
+                cur = db.cursor()
+                cur.execute(
+                    "INSERT INTO users (email, name, password_hash, role, can_create_shops) VALUES (?,?,?,?,?)",
+                    (email, name, generate_password_hash(password), 'owner', can_create)
                 )
+                new_uid = cur.lastrowid
+                # Optionally create a shop for this owner right away
+                shop_name = f.get('new_shop_name', '').strip()
+                if shop_name:
+                    cur.execute(
+                        "INSERT INTO shops (owner_id, name, currency) VALUES (?,?,?)",
+                        (new_uid, shop_name, 'USD')
+                    )
+                    new_shop_id = cur.lastrowid
+                    seed_default_categories(db, new_shop_id)
                 db.commit()
                 db.close()
-                flash(f'Account created for {email}. Share their password securely.', 'success')
+                flash(f'Owner account created for {email}.', 'success')
                 return redirect(url_for('admin_index'))
-    return render_template('admin/user_form.html', user=None)
+    db.close()
+    return render_template('admin/user_form.html', user=None, all_shops=all_shops)
 
 
 @app.route('/admin/users/<int:uid>/edit', methods=['GET', 'POST'])
@@ -310,21 +398,26 @@ def admin_user_edit(uid):
         flash('User not found.', 'danger')
         db.close()
         return redirect(url_for('admin_index'))
+    all_shops = [dict(r) for r in db.execute(
+        "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id ORDER BY s.name"
+    ).fetchall()]
     if request.method == 'POST':
         f = request.form
         new_hash = user['password_hash']
         if f.get('password'):
             new_hash = generate_password_hash(f['password'])
+        can_create = 1 if f.get('can_create_shops') else 0
         db.execute(
-            "UPDATE users SET name=?, email=?, password_hash=? WHERE id=?",
-            (f.get('name', user['name']), f.get('email', user['email']).lower(), new_hash, uid)
+            "UPDATE users SET name=?, email=?, password_hash=?, can_create_shops=? WHERE id=?",
+            (f.get('name', user['name']), f.get('email', user['email']).lower(),
+             new_hash, can_create, uid)
         )
         db.commit()
         db.close()
         flash('User updated.', 'success')
         return redirect(url_for('admin_index'))
     db.close()
-    return render_template('admin/user_form.html', user=dict(user))
+    return render_template('admin/user_form.html', user=dict(user), all_shops=all_shops)
 
 
 @app.route('/admin/users/<int:uid>/toggle', methods=['POST'])
@@ -622,7 +715,7 @@ def sales_history():
 
 
 @app.route('/sales/<int:sale_id>/void', methods=['POST'])
-@shop_required
+@owner_required
 def void_sale(sale_id):
     db = get_db()
     sale = db.execute("SELECT * FROM sales WHERE id=? AND shop_id=?", (sale_id, sid())).fetchone()
@@ -645,7 +738,7 @@ def void_sale(sale_id):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/products')
-@shop_required
+@owner_required
 def products():
     db = get_db()
     cat_filter = request.args.get('category', '')
@@ -670,7 +763,7 @@ def products():
 
 
 @app.route('/products/new', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def product_new():
     db = get_db()
     if request.method == 'POST':
@@ -713,7 +806,7 @@ def product_new():
 
 
 @app.route('/products/<int:pid>/edit', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def product_edit(pid):
     db = get_db()
     p = db.execute("SELECT * FROM products WHERE id=? AND shop_id=?", (pid, sid())).fetchone()
@@ -762,7 +855,7 @@ def product_edit(pid):
 
 
 @app.route('/products/<int:pid>/delete', methods=['POST'])
-@shop_required
+@owner_required
 def product_delete(pid):
     db = get_db()
     db.execute("UPDATE products SET is_active=0 WHERE id=? AND shop_id=?", (pid, sid()))
@@ -778,7 +871,7 @@ def product_delete(pid):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/inventory')
-@shop_required
+@owner_required
 def inventory():
     db = get_db()
     prods = [dict(r) for r in db.execute(
@@ -794,7 +887,7 @@ def inventory():
 
 
 @app.route('/inventory/adjust', methods=['POST'])
-@shop_required
+@owner_required
 def inventory_adjust():
     f = request.form
     pid = int(f['product_id'])
@@ -828,7 +921,7 @@ def inventory_adjust():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/suppliers')
-@shop_required
+@owner_required
 def suppliers():
     db = get_db()
     sups = [dict(r) for r in db.execute(
@@ -839,7 +932,7 @@ def suppliers():
 
 
 @app.route('/suppliers/new', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def supplier_new():
     if request.method == 'POST':
         f = request.form
@@ -864,7 +957,7 @@ def supplier_new():
 
 
 @app.route('/suppliers/<int:sid_>/edit', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def supplier_edit(sid_):
     db = get_db()
     sup = db.execute("SELECT * FROM suppliers WHERE id=? AND shop_id=?", (sid_, sid())).fetchone()
@@ -896,7 +989,7 @@ def supplier_edit(sid_):
 
 
 @app.route('/suppliers/<int:sid_>/delete', methods=['POST'])
-@shop_required
+@owner_required
 def supplier_delete(sid_):
     db = get_db()
     db.execute("DELETE FROM suppliers WHERE id=? AND shop_id=?", (sid_, sid()))
@@ -912,7 +1005,7 @@ def supplier_delete(sid_):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/purchases')
-@shop_required
+@owner_required
 def purchases():
     db = get_db()
     orders = [dict(r) for r in db.execute(
@@ -925,7 +1018,7 @@ def purchases():
 
 
 @app.route('/purchases/new', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def purchase_new():
     db = get_db()
     if request.method == 'POST':
@@ -972,7 +1065,7 @@ def purchase_new():
 
 
 @app.route('/purchases/<int:po_id>')
-@shop_required
+@owner_required
 def purchase_detail(po_id):
     db = get_db()
     po = db.execute(
@@ -992,7 +1085,7 @@ def purchase_detail(po_id):
 
 
 @app.route('/purchases/<int:po_id>/receive', methods=['POST'])
-@shop_required
+@owner_required
 def purchase_receive(po_id):
     db = get_db()
     po = db.execute(
@@ -1030,7 +1123,7 @@ def purchase_receive(po_id):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/customers')
-@shop_required
+@owner_required
 def customers():
     db = get_db()
     custs = [dict(r) for r in db.execute(
@@ -1043,7 +1136,7 @@ def customers():
 
 
 @app.route('/customers/new', methods=['POST'])
-@shop_required
+@owner_required
 def customer_new():
     f = request.form
     db = get_db()
@@ -1064,7 +1157,7 @@ def customer_new():
 
 
 @app.route('/customers/<int:cid>/delete', methods=['POST'])
-@shop_required
+@owner_required
 def customer_delete(cid):
     db = get_db()
     db.execute("DELETE FROM customers WHERE id=? AND shop_id=?", (cid, sid()))
@@ -1080,7 +1173,7 @@ def customer_delete(cid):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/expenses')
-@shop_required
+@owner_required
 def expenses():
     db = get_db()
     date_from = request.args.get('from', (date.today() - timedelta(days=30)).isoformat())
@@ -1100,7 +1193,7 @@ def expenses():
 
 
 @app.route('/expenses/add', methods=['POST'])
-@shop_required
+@owner_required
 def expense_add():
     f = request.form
     db = get_db()
@@ -1123,7 +1216,7 @@ def expense_add():
 
 
 @app.route('/expenses/<int:eid>/delete', methods=['POST'])
-@shop_required
+@owner_required
 def expense_delete(eid):
     db = get_db()
     db.execute("DELETE FROM expenses WHERE id=? AND shop_id=?", (eid, sid()))
@@ -1139,7 +1232,7 @@ def expense_delete(eid):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/reports')
-@shop_required
+@owner_required
 def reports():
     db = get_db()
     today = today_str()
@@ -1196,7 +1289,7 @@ def reports():
 
 
 @app.route('/reports/sales')
-@shop_required
+@owner_required
 def report_sales():
     db = get_db()
     date_from = request.args.get('from', (date.today() - timedelta(days=30)).isoformat())
@@ -1230,7 +1323,7 @@ def report_sales():
 
 
 @app.route('/reports/pnl')
-@shop_required
+@owner_required
 def report_pnl():
     db = get_db()
     date_from = request.args.get('from', date.today().replace(day=1).isoformat())
@@ -1263,7 +1356,7 @@ def report_pnl():
 
 
 @app.route('/reports/tax')
-@shop_required
+@owner_required
 def report_tax():
     db = get_db()
     date_from = request.args.get('from', date.today().replace(day=1).isoformat())
@@ -1295,7 +1388,7 @@ def report_tax():
 
 
 @app.route('/reports/export/sales')
-@shop_required
+@owner_required
 def export_sales_csv():
     db = get_db()
     date_from = request.args.get('from', (date.today() - timedelta(days=30)).isoformat())
@@ -1323,7 +1416,7 @@ def export_sales_csv():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/zreport')
-@shop_required
+@owner_required
 def zreport():
     db = get_db()
     day = request.args.get('date', today_str())
@@ -1362,7 +1455,7 @@ def zreport():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/settings', methods=['GET', 'POST'])
-@shop_required
+@owner_required
 def settings():
     db = get_db()
     if request.method == 'POST':
@@ -1419,7 +1512,7 @@ def settings():
 
 
 @app.route('/settings/categories/add', methods=['POST'])
-@shop_required
+@owner_required
 def category_add():
     f = request.form
     db = get_db()
@@ -1432,7 +1525,7 @@ def category_add():
 
 
 @app.route('/settings/categories/<int:cid>/delete', methods=['POST'])
-@shop_required
+@owner_required
 def category_delete(cid):
     db = get_db()
     db.execute("DELETE FROM categories WHERE id=? AND shop_id=?", (cid, sid()))
@@ -1440,6 +1533,272 @@ def category_delete(cid):
     db.close()
     flash('Category deleted.', 'info')
     return redirect(url_for('settings'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Staff Management (owner creates & manages their sales staff)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/staff')
+@login_required
+def staff_list():
+    if session.get('role') not in ('owner', 'admin'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        rows = db.execute(
+            """SELECT u.*, s.name as shop_name, c.name as created_by_name
+               FROM users u
+               LEFT JOIN shops s ON u.assigned_shop_id=s.id
+               LEFT JOIN users c ON u.created_by=c.id
+               WHERE u.role='staff' ORDER BY u.name"""
+        ).fetchall()
+    else:
+        rows = db.execute(
+            """SELECT u.*, s.name as shop_name
+               FROM users u
+               LEFT JOIN shops s ON u.assigned_shop_id=s.id
+               WHERE u.created_by=? AND u.role='staff' ORDER BY u.name""",
+            (uid,)
+        ).fetchall()
+    staff_data = []
+    for r in rows:
+        sd = dict(r)
+        stats = db.execute(
+            "SELECT COUNT(*) as cnt, COALESCE(SUM(total),0) as total FROM sales "
+            "WHERE cashier=? AND shop_id=? AND status='completed'",
+            (r['name'], r['assigned_shop_id'])
+        ).fetchone()
+        last_sess = db.execute(
+            "SELECT * FROM user_sessions WHERE user_id=? ORDER BY login_at DESC LIMIT 1",
+            (r['id'],)
+        ).fetchone()
+        sd['sale_count'] = stats['cnt']
+        sd['sale_total'] = float(stats['total'])
+        sd['last_login'] = last_sess['login_at'] if last_sess else None
+        sd['last_logout'] = last_sess['logout_at'] if last_sess else None
+        sd['active_now'] = bool(last_sess and not last_sess['logout_at'])
+        staff_data.append(sd)
+    if role == 'admin':
+        my_shops = [dict(r) for r in db.execute("SELECT * FROM shops ORDER BY name").fetchall()]
+    else:
+        my_shops = [dict(r) for r in db.execute(
+            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (uid,)
+        ).fetchall()]
+    db.close()
+    return render_template('staff.html', staff_list=staff_data, shops=my_shops)
+
+
+@app.route('/staff/new', methods=['GET', 'POST'])
+@login_required
+def staff_new():
+    if session.get('role') not in ('owner', 'admin'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        my_shops = [dict(r) for r in db.execute("SELECT * FROM shops ORDER BY name").fetchall()]
+    else:
+        my_shops = [dict(r) for r in db.execute(
+            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (uid,)
+        ).fetchall()]
+    if request.method == 'POST':
+        f = request.form
+        email = f.get('email', '').strip().lower()
+        name = f.get('name', '').strip()
+        password = f.get('password', '').strip()
+        assigned_shop_id = f.get('assigned_shop_id') or None
+        if not email or not name or not password:
+            flash('Name, email, and password are required.', 'danger')
+        else:
+            existing = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
+            if existing:
+                flash('That email is already registered.', 'danger')
+            else:
+                db.execute(
+                    "INSERT INTO users (email, name, password_hash, role, assigned_shop_id, created_by, can_create_shops) "
+                    "VALUES (?,?,?,?,?,?,0)",
+                    (email, name, generate_password_hash(password), 'staff', assigned_shop_id, uid)
+                )
+                db.commit()
+                db.close()
+                flash(f'Staff account created for {name}.', 'success')
+                return redirect(url_for('staff_list'))
+    db.close()
+    return render_template('staff_form.html', staff=None, shops=my_shops)
+
+
+@app.route('/staff/<int:uid_>/edit', methods=['GET', 'POST'])
+@login_required
+def staff_edit(uid_):
+    if session.get('role') not in ('owner', 'admin'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        staff = db.execute("SELECT * FROM users WHERE id=? AND role='staff'", (uid_,)).fetchone()
+        my_shops = [dict(r) for r in db.execute("SELECT * FROM shops ORDER BY name").fetchall()]
+    else:
+        staff = db.execute(
+            "SELECT * FROM users WHERE id=? AND created_by=? AND role='staff'", (uid_, uid)
+        ).fetchone()
+        my_shops = [dict(r) for r in db.execute(
+            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (uid,)
+        ).fetchall()]
+    if not staff:
+        flash('Staff member not found.', 'danger')
+        db.close()
+        return redirect(url_for('staff_list'))
+    if request.method == 'POST':
+        f = request.form
+        new_hash = staff['password_hash']
+        if f.get('password'):
+            new_hash = generate_password_hash(f['password'])
+        assigned_shop_id = f.get('assigned_shop_id') or None
+        db.execute(
+            "UPDATE users SET name=?, email=?, password_hash=?, assigned_shop_id=? WHERE id=?",
+            (f.get('name', staff['name']),
+             f.get('email', staff['email']).strip().lower(),
+             new_hash, assigned_shop_id, uid_)
+        )
+        db.commit()
+        db.close()
+        flash('Staff account updated.', 'success')
+        return redirect(url_for('staff_list'))
+    db.close()
+    return render_template('staff_form.html', staff=dict(staff), shops=my_shops)
+
+
+@app.route('/staff/<int:uid_>/toggle', methods=['POST'])
+@login_required
+def staff_toggle(uid_):
+    if session.get('role') not in ('owner', 'admin'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        staff = db.execute("SELECT * FROM users WHERE id=? AND role='staff'", (uid_,)).fetchone()
+    else:
+        staff = db.execute(
+            "SELECT * FROM users WHERE id=? AND created_by=? AND role='staff'", (uid_, uid)
+        ).fetchone()
+    if staff:
+        db.execute("UPDATE users SET is_active=? WHERE id=?",
+                   (0 if staff['is_active'] else 1, uid_))
+        db.commit()
+    db.close()
+    return redirect(url_for('staff_list'))
+
+
+@app.route('/staff/<int:uid_>/performance')
+@login_required
+def staff_performance(uid_):
+    if session.get('role') not in ('owner', 'admin'):
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        staff = db.execute("SELECT * FROM users WHERE id=? AND role='staff'", (uid_,)).fetchone()
+    else:
+        staff = db.execute(
+            "SELECT * FROM users WHERE id=? AND created_by=? AND role='staff'", (uid_, uid)
+        ).fetchone()
+    if not staff:
+        flash('Staff member not found.', 'danger')
+        db.close()
+        return redirect(url_for('staff_list'))
+    staff = dict(staff)
+    sessions_log = [dict(r) for r in db.execute(
+        "SELECT * FROM user_sessions WHERE user_id=? ORDER BY login_at DESC LIMIT 50",
+        (uid_,)
+    ).fetchall()]
+    sales = [dict(r) for r in db.execute(
+        "SELECT * FROM sales WHERE cashier=? AND shop_id=? AND status='completed' "
+        "ORDER BY created_at DESC LIMIT 100",
+        (staff['name'], staff['assigned_shop_id'])
+    ).fetchall()]
+    stats = dict(db.execute(
+        "SELECT COUNT(*) as cnt, COALESCE(SUM(total),0) as total FROM sales "
+        "WHERE cashier=? AND shop_id=? AND status='completed'",
+        (staff['name'], staff['assigned_shop_id'])
+    ).fetchone())
+    shop_row = db.execute("SELECT name FROM shops WHERE id=?",
+                          (staff['assigned_shop_id'],)).fetchone() if staff['assigned_shop_id'] else None
+    db.close()
+    return render_template('staff_performance.html', staff=staff,
+                           sessions_log=sessions_log, sales=sales, stats=stats,
+                           shop_name=shop_row['name'] if shop_row else 'Unknown')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Combined Dashboard (owners with multiple shops)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/dashboard/combined')
+@login_required
+def dashboard_combined():
+    if session.get('role') == 'staff':
+        flash('Access denied.', 'danger')
+        return redirect(url_for('pos'))
+    db = get_db()
+    uid = session['user_id']
+    role = session.get('role')
+    if role == 'admin':
+        shops = [dict(r) for r in db.execute(
+            "SELECT s.*, u.name as owner_name FROM shops s JOIN users u ON s.owner_id=u.id ORDER BY s.name"
+        ).fetchall()]
+    else:
+        shops = [dict(r) for r in db.execute(
+            "SELECT * FROM shops WHERE owner_id=? ORDER BY name", (uid,)
+        ).fetchall()]
+
+    period = int(request.args.get('period', 30))
+    date_from = (date.today() - timedelta(days=period)).isoformat()
+    date_to = today_str()
+
+    totals = {'revenue': 0.0, 'expenses': 0.0, 'profit': 0.0, 'sales_count': 0, 'tax': 0.0}
+    shops_data = []
+    for shop in shops:
+        shop_id = shop['id']
+        rev_row = db.execute(
+            "SELECT COALESCE(SUM(total),0) as rev, COALESCE(SUM(tax_amount),0) as tax, COUNT(*) as cnt "
+            "FROM sales WHERE shop_id=? AND status='completed' AND DATE(created_at) BETWEEN ? AND ?",
+            (shop_id, date_from, date_to)
+        ).fetchone()
+        exp_row = db.execute(
+            "SELECT COALESCE(SUM(amount),0) as total FROM expenses "
+            "WHERE shop_id=? AND expense_date BETWEEN ? AND ?",
+            (shop_id, date_from, date_to)
+        ).fetchone()
+        rev = float(rev_row['rev'])
+        exp = float(exp_row['total'])
+        tax = float(rev_row['tax'])
+        profit = rev - exp
+        shop['revenue'] = rev
+        shop['expenses'] = exp
+        shop['profit'] = profit
+        shop['sales_count'] = rev_row['cnt']
+        shop['tax'] = tax
+        totals['revenue'] += rev
+        totals['expenses'] += exp
+        totals['profit'] += profit
+        totals['sales_count'] += rev_row['cnt']
+        totals['tax'] += tax
+        shops_data.append(shop)
+    db.close()
+    return render_template('dashboard_combined.html', shops=shops_data, totals=totals,
+                           period=period, date_from=date_from, date_to=date_to)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if staff else 'New' }} Staff Member{% endblock %}
+{% block page_title %}{{ 'Edit' if staff else 'Add' }} Staff Member{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <i class="bi bi-person-badge me-2"></i>{{ 'Edit' if staff else 'New' }} Staff Account
+        </div>
+        <div class="card-body">
+          {% if not staff %}
+          <div class="alert alert-info py-2">
+            <i class="bi bi-info-circle me-1"></i>
+            Staff can only use the POS on their assigned shop.
+            Share their login credentials after creating the account.
+          </div>
+          {% endif %}
+          <form method="post">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label fw-semibold">Full Name *</label>
+                <input name="name" class="form-control" required
+                  placeholder="e.g. Tendai Dube"
+                  value="{{ staff.name if staff else '' }}">
+                <div class="form-text">This name appears on every receipt they process.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Email Address *</label>
+                <input type="email" name="email" class="form-control" required
+                  placeholder="staff@email.com"
+                  value="{{ staff.email if staff else '' }}">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">
+                  Password {% if staff %}<small class="text-muted">(leave blank to keep current)</small>{% else %}*{% endif %}
+                </label>
+                <div class="input-group">
+                  <input type="password" name="password" class="form-control"
+                    placeholder="{{ 'New password (optional)' if staff else 'Set a password' }}"
+                    id="pwdInput" {% if not staff %}required{% endif %}>
+                  <button class="btn btn-outline-secondary" type="button"
+                    onclick="const i=document.getElementById('pwdInput');i.type=i.type==='password'?'text':'password'">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold">Assigned Shop *</label>
+                <select name="assigned_shop_id" class="form-select" required>
+                  <option value="">— Select shop —</option>
+                  {% for s in shops %}
+                  <option value="{{ s.id }}"
+                    {{ 'selected' if staff and staff.assigned_shop_id == s.id else '' }}>
+                    {{ s.name }}
+                  </option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Staff can only use the POS on this shop.</div>
+              </div>
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i>{{ 'Save Changes' if staff else 'Create Staff Account' }}
+              </button>
+              <a href="{{ url_for('staff_list') }}" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

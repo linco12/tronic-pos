@@ -209,9 +209,31 @@ def init_db():
             notes           TEXT    DEFAULT '',
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL REFERENCES users(id),
+            shop_id     INTEGER REFERENCES shops(id),
+            login_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            logout_at   TIMESTAMP,
+            ip_address  TEXT DEFAULT ''
+        );
     ''')
 
     conn.commit()
+
+    # Add new columns to users table if they don't exist yet (idempotent migration)
+    for col, typedef in [
+        ('assigned_shop_id', 'INTEGER REFERENCES shops(id)'),
+        ('created_by',       'INTEGER REFERENCES users(id)'),
+        ('can_create_shops', 'INTEGER NOT NULL DEFAULT 0'),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {typedef}")
+            conn.commit()
+        except Exception:
+            pass
+
     conn.close()
 
 
