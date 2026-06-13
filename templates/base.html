@@ -145,6 +145,12 @@
         <i class="bi bi-exclamation-triangle me-1"></i>{{ low_stock_count }} Low
       </a>
       {% endif %}
+      <!-- Offline sync badge -->
+      <button class="btn btn-sm btn-warning position-relative d-none" id="offline-sync-btn"
+        title="Pending offline sales" onclick="flushQueue()">
+        <i class="bi bi-cloud-upload"></i>
+        <span id="offline-sync-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none">0</span>
+      </button>
       <!-- User menu -->
       <div class="dropdown">
         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
@@ -177,6 +183,12 @@
     </div>
   </div>
 
+  <!-- Offline banner -->
+  <div id="offline-banner" class="d-none alert alert-warning rounded-0 mb-0 py-2 text-center" role="alert">
+    <i class="bi bi-wifi-off me-2"></i>
+    <strong>You're offline.</strong> Cash sales are saved locally and will sync when you reconnect.
+  </div>
+
   <div class="content-area">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -195,6 +207,23 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/offline-queue.js') }}"></script>
+<script>
+  // Register Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(() => console.log('SW registered'))
+      .catch(e => console.warn('SW registration failed:', e));
+  }
+  // Show sync button when there are pending sales
+  async function _checkSyncBtn() {
+    const count = typeof pendingCount === 'function' ? await pendingCount() : 0;
+    const btn = document.getElementById('offline-sync-btn');
+    if (btn) btn.classList.toggle('d-none', count === 0);
+  }
+  document.addEventListener('DOMContentLoaded', _checkSyncBtn);
+  window.addEventListener('online', _checkSyncBtn);
+</script>
 <script>
   function updateClock() {
     const el = document.getElementById('clock');

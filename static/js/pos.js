@@ -342,6 +342,13 @@ async function completeSale(paymentData) {
       body: JSON.stringify(payload)
     });
     const data = await res.json();
+
+    // Service Worker returns {offline:true} when server is unreachable
+    if (data.offline) {
+      await _handleOfflineSale(payload);
+      return;
+    }
+
     if (data.success) {
       pendingSaleId = data.sale_id;
       document.getElementById('receiptRef').textContent = data.reference;
@@ -355,7 +362,30 @@ async function completeSale(paymentData) {
       showAlert('Sale failed: ' + (data.error || 'Unknown error'), 'danger');
     }
   } catch (e) {
-    showAlert('Network error. Please try again.', 'danger');
+    await _handleOfflineSale(payload);
+  }
+}
+
+async function _handleOfflineSale(payload) {
+  const method = payload.payment_method;
+  if (method === 'ecocash') {
+    showAlert('EcoCash requires internet. Switch to cash while offline.', 'warning');
+    return;
+  }
+  try {
+    await queueSale(payload);
+    await updateSyncBadge();
+    document.getElementById('offline-sync-btn')?.classList.remove('d-none');
+    // Show a receipt-style confirmation
+    const ref = 'OFF-' + Date.now().toString(36).toUpperCase();
+    document.getElementById('receiptRef').textContent = ref + ' (OFFLINE)';
+    document.getElementById('receiptChange').innerHTML =
+      '<span class="text-warning"><i class="bi bi-cloud-upload me-1"></i>Saved offline — will sync when reconnected</span>';
+    document.getElementById('receiptPrintBtn').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('receiptModal')).show();
+    clearCartData();
+  } catch (err) {
+    showAlert('Could not save sale offline. ' + err.message, 'danger');
   }
 }
 
@@ -368,6 +398,8 @@ document.getElementById('clearCart').addEventListener('click', () => {
 
 document.getElementById('receiptClose').addEventListener('click', () => {
   bootstrap.Modal.getInstance(document.getElementById('receiptModal')).hide();
+  // Restore print button visibility for next sale
+  document.getElementById('receiptPrintBtn')?.classList.remove('d-none');
 });
 
 document.getElementById('discountInput').addEventListener('input', updateTotals);

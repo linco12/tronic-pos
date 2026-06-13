@@ -35,3 +35,7 @@ Thumbs.db
 # Test artifacts
 test_apis.py
 seed_demo.py
+
+# Firebase service account key — NEVER commit this
+firebase-credentials.json
+*-service-account*.json

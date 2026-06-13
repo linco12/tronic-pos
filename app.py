@@ -12,6 +12,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from database import get_db, init_db, seed_default_categories
 from ecocash import EcoCashAPI
+import firebase_sync
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'tronic_pos_zw_2024_change_in_production')
@@ -227,6 +228,11 @@ def shop_new():
         new_shop_id = c.lastrowid
         seed_default_categories(db, new_shop_id)
         db.commit()
+        firebase_sync.sync_shop({'id': new_shop_id, 'name': f['name'],
+                                  'currency': f.get('currency', 'USD'),
+                                  'address': f.get('address', ''),
+                                  'phone': f.get('phone', ''),
+                                  'vat_registered': 0})
         db.close()
         session['shop_id'] = new_shop_id
         session['shop_name'] = f['name']
@@ -486,6 +492,12 @@ def api_create_sale():
                       (sale_id, payment_method, amount_paid, ecocash_number, ecocash_ref, 'completed'))
 
         db.commit()
+        firebase_sync.sync_sale(sid(), {
+            'id': sale_id, 'reference': ref, 'total': grand_total,
+            'tax_amount': tax_total, 'payment_method': payment_method,
+            'cashier': cashier, 'created_at': datetime.now().isoformat(),
+            'status': 'completed',
+        })
         db.close()
         return jsonify({'success': True, 'sale_id': sale_id, 'reference': ref, 'change': change})
     except Exception as e:
@@ -663,7 +675,7 @@ def product_new():
         f = request.form
         sku = f.get('sku', '').strip() or f"SKU-{uuid.uuid4().hex[:6].upper()}"
         try:
-            db.execute(
+            cur = db.execute(
                 """INSERT INTO products (shop_id, name, description, sku, barcode,
                    category_id, supplier_id, cost_price, selling_price,
                    stock_quantity, min_stock_level, unit, tax_type)
@@ -675,6 +687,14 @@ def product_new():
                  f.get('unit', 'each'), f.get('tax_type', 'standard'))
             )
             db.commit()
+            firebase_sync.sync_product(sid(), {
+                'id': cur.lastrowid, 'name': f['name'], 'sku': sku,
+                'selling_price': float(f.get('selling_price', 0)),
+                'cost_price': float(f.get('cost_price', 0)),
+                'stock_quantity': float(f.get('stock_quantity', 0)),
+                'tax_type': f.get('tax_type', 'standard'),
+                'is_active': 1, 'unit': f.get('unit', 'each'),
+            })
             flash('Product added.', 'success')
             db.close()
             return redirect(url_for('products'))
@@ -702,6 +722,7 @@ def product_edit(pid):
     if request.method == 'POST':
         f = request.form
         try:
+            is_active = 1 if f.get('is_active') else 0
             db.execute(
                 """UPDATE products SET name=?, description=?, sku=?, barcode=?,
                    category_id=?, supplier_id=?, cost_price=?, selling_price=?,
@@ -712,9 +733,17 @@ def product_edit(pid):
                  float(f.get('cost_price', 0)), float(f.get('selling_price', 0)),
                  float(f.get('stock_quantity', 0)), float(f.get('min_stock_level', 5)),
                  f.get('unit', 'each'), f.get('tax_type', 'standard'),
-                 1 if f.get('is_active') else 0, pid, sid())
+                 is_active, pid, sid())
             )
             db.commit()
+            firebase_sync.sync_product(sid(), {
+                'id': pid, 'name': f['name'], 'sku': f.get('sku', ''),
+                'selling_price': float(f.get('selling_price', 0)),
+                'cost_price': float(f.get('cost_price', 0)),
+                'stock_quantity': float(f.get('stock_quantity', 0)),
+                'tax_type': f.get('tax_type', 'standard'),
+                'is_active': is_active, 'unit': f.get('unit', 'each'),
+            })
             flash('Product updated.', 'success')
             db.close()
             return redirect(url_for('products'))
@@ -736,6 +765,7 @@ def product_delete(pid):
     db = get_db()
     db.execute("UPDATE products SET is_active=0 WHERE id=? AND shop_id=?", (pid, sid()))
     db.commit()
+    firebase_sync.remove_product(sid(), pid)
     db.close()
     flash('Product deactivated.', 'info')
     return redirect(url_for('products'))
@@ -812,13 +842,19 @@ def supplier_new():
     if request.method == 'POST':
         f = request.form
         db = get_db()
-        db.execute(
+        cur = db.execute(
             """INSERT INTO suppliers (shop_id, name, contact_person, phone, email, address, payment_terms, notes)
                VALUES (?,?,?,?,?,?,?,?)""",
             (sid(), f['name'], f.get('contact_person', ''), f.get('phone', ''),
              f.get('email', ''), f.get('address', ''), f.get('payment_terms', 'Cash'), f.get('notes', ''))
         )
         db.commit()
+        firebase_sync.sync_supplier(sid(), {
+            'id': cur.lastrowid, 'name': f['name'],
+            'contact_person': f.get('contact_person', ''),
+            'phone': f.get('phone', ''), 'email': f.get('email', ''),
+            'address': f.get('address', ''),
+        })
         db.close()
         flash('Supplier added.', 'success')
         return redirect(url_for('suppliers'))
@@ -844,6 +880,12 @@ def supplier_edit(sid_):
              f.get('notes', ''), sid_, sid())
         )
         db.commit()
+        firebase_sync.sync_supplier(sid(), {
+            'id': sid_, 'name': f['name'],
+            'contact_person': f.get('contact_person', ''),
+            'phone': f.get('phone', ''), 'email': f.get('email', ''),
+            'address': f.get('address', ''),
+        })
         db.close()
         flash('Supplier updated.', 'success')
         return redirect(url_for('suppliers'))
@@ -857,6 +899,7 @@ def supplier_delete(sid_):
     db = get_db()
     db.execute("DELETE FROM suppliers WHERE id=? AND shop_id=?", (sid_, sid()))
     db.commit()
+    firebase_sync.remove_supplier(sid(), sid_)
     db.close()
     flash('Supplier deleted.', 'info')
     return redirect(url_for('suppliers'))
@@ -1002,12 +1045,17 @@ def customers():
 def customer_new():
     f = request.form
     db = get_db()
-    db.execute(
+    cur = db.execute(
         "INSERT INTO customers (shop_id, name, phone, email, ecocash_number, address) VALUES (?,?,?,?,?,?)",
         (sid(), f.get('name', ''), f.get('phone', ''), f.get('email', ''),
          f.get('ecocash_number', ''), f.get('address', ''))
     )
     db.commit()
+    firebase_sync.sync_customer(sid(), {
+        'id': cur.lastrowid, 'name': f.get('name', ''),
+        'phone': f.get('phone', ''), 'email': f.get('email', ''),
+        'ecocash_number': f.get('ecocash_number', ''),
+    })
     db.close()
     flash('Customer added.', 'success')
     return redirect(url_for('customers'))
@@ -1019,6 +1067,7 @@ def customer_delete(cid):
     db = get_db()
     db.execute("DELETE FROM customers WHERE id=? AND shop_id=?", (cid, sid()))
     db.commit()
+    firebase_sync.remove_customer(sid(), cid)
     db.close()
     flash('Customer deleted.', 'info')
     return redirect(url_for('customers'))
@@ -1053,13 +1102,19 @@ def expenses():
 def expense_add():
     f = request.form
     db = get_db()
-    db.execute(
+    exp_date = f.get('expense_date') or today_str()
+    cur = db.execute(
         """INSERT INTO expenses (shop_id, category, description, amount, expense_date, receipt_ref, notes)
            VALUES (?,?,?,?,?,?,?)""",
         (sid(), f['category'], f.get('description', ''), float(f['amount']),
-         f.get('expense_date') or today_str(), f.get('receipt_ref', ''), f.get('notes', ''))
+         exp_date, f.get('receipt_ref', ''), f.get('notes', ''))
     )
     db.commit()
+    firebase_sync.sync_expense(sid(), {
+        'id': cur.lastrowid, 'category': f['category'],
+        'description': f.get('description', ''),
+        'amount': float(f['amount']), 'expense_date': exp_date,
+    })
     db.close()
     flash('Expense recorded.', 'success')
     return redirect(url_for('expenses'))
@@ -1071,6 +1126,7 @@ def expense_delete(eid):
     db = get_db()
     db.execute("DELETE FROM expenses WHERE id=? AND shop_id=?", (eid, sid()))
     db.commit()
+    firebase_sync.remove_expense(sid(), eid)
     db.close()
     flash('Expense deleted.', 'info')
     return redirect(url_for('expenses'))
@@ -1340,6 +1396,13 @@ def settings():
                  f.get('ecocash_mode','test'), f.get('receipt_footer',''), sid())
             )
         db.commit()
+        firebase_sync.sync_shop({
+            'id': sid(), 'name': f.get('name', ''),
+            'currency': f.get('currency', 'USD'),
+            'address': f.get('address', ''),
+            'phone': f.get('phone', ''),
+            'vat_registered': 1 if f.get('vat_registered') else 0,
+        })
         session['shop_name'] = f.get('name', session.get('shop_name', ''))
         flash('Settings saved.', 'success')
         db.close()
@@ -1380,6 +1443,32 @@ def category_delete(cid):
 # ══════════════════════════════════════════════════════════════════════════════
 # Startup
 # ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/sw.js')
+def service_worker():
+    resp = app.send_static_file('sw.js')
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['Service-Worker-Allowed'] = '/'
+    return resp
+
+
+@app.route('/offline')
+def offline_page():
+    return render_template('offline.html')
+
+
+@app.route('/api/sync/status')
+@shop_required
+def api_sync_status():
+    """Returns basic shop data for offline cache warming."""
+    db = get_db()
+    products = [dict(r) for r in db.execute(
+        "SELECT id,name,sku,selling_price,cost_price,stock_quantity,unit,tax_type FROM products WHERE shop_id=? AND is_active=1",
+        (sid(),)
+    ).fetchall()]
+    db.close()
+    return jsonify({'shop_id': sid(), 'products': products, 'online': True})
+
 
 def create_admin():
     """Ensure the super-admin account exists on first run."""

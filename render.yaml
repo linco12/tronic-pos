@@ -13,10 +13,14 @@ services:
       sizeGB: 1
     envVars:
       - key: SECRET_KEY
-        generateValue: true          # Render auto-generates a secure key
+        generateValue: true
       - key: ADMIN_EMAIL
         value: lincolnmotiwac@gmail.com
       - key: ADMIN_PASSWORD
-        sync: false                  # Set this manually in Render dashboard
+        sync: false
       - key: DATABASE_PATH
         value: /mnt/data/tronic_pos.db
+      - key: FIREBASE_DATABASE_URL
+        value: https://bhini-6fd48-default-rtdb.firebaseio.com
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
