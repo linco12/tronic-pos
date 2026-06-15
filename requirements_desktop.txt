@@ -1,0 +1,40 @@
+# Tronic POS — Desktop App Dependencies
+# Install with: pip install -r requirements_desktop.txt
+# For Railway/server: use requirements.txt instead
+
+# ── Core Flask stack ──────────────────────────────────────────────────────────
+Flask==3.0.3
+Werkzeug==3.0.3
+click==8.1.7
+itsdangerous==2.2.0
+Jinja2==3.1.4
+MarkupSafe==2.1.5
+
+# ── HTTP / network ────────────────────────────────────────────────────────────
+requests==2.31.0
+urllib3==2.2.1
+certifi==2024.2.2
+charset-normalizer==3.3.2
+idna==3.7
+
+# ── Date utilities ────────────────────────────────────────────────────────────
+python-dateutil==2.9.0
+six==1.16.0
+
+# ── Firebase Admin SDK (optional — app works offline without credentials) ─────
+firebase-admin==6.5.0
+google-auth==2.29.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.127.0
+google-cloud-firestore==2.16.0
+grpcio==1.63.0
+
+# ── Environment / config ──────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Desktop GUI (pywebview wraps Flask in a native window) ───────────────────
+pywebview==4.4.1
+
+# ── Build tool ────────────────────────────────────────────────────────────────
+pyinstaller==6.6.0
+pyinstaller-hooks-contrib==2024.6

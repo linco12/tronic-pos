@@ -1957,6 +1957,56 @@ def api_sync_status():
     return jsonify({'shop_id': sid(), 'products': products, 'online': True})
 
 
+@app.route('/api/version')
+def api_version():
+    """Android APK version check — bump APP_VERSION_CODE in Railway env to trigger update."""
+    base_url = request.host_url.rstrip('/')
+    return jsonify({
+        'version_code':  int(os.environ.get('APP_VERSION_CODE', '1')),
+        'version_name':  os.environ.get('APP_VERSION_NAME', '1.0.0'),
+        'download_url':  os.environ.get('APP_DOWNLOAD_URL', f'{base_url}/static/downloads/TronicPOS.apk'),
+        'changelog':     os.environ.get('APP_CHANGELOG', 'Bug fixes and improvements.'),
+        'force_update':  os.environ.get('APP_FORCE_UPDATE', '0') == '1',
+    })
+
+
+@app.route('/api/printer/receipt-data/<int:sale_id>')
+@login_required
+def api_printer_receipt_data(sale_id):
+    """Return full receipt data as JSON for ESC/POS printing from Android."""
+    db = get_db()
+    if session.get('role') == 'admin':
+        sale = db.execute("SELECT * FROM sales WHERE id=?", (sale_id,)).fetchone()
+    else:
+        sale = db.execute(
+            "SELECT * FROM sales WHERE id=? AND shop_id=?", (sale_id, sid())
+        ).fetchone()
+    if not sale:
+        db.close()
+        return jsonify({'error': 'Receipt not found'}), 404
+
+    items    = db.execute("SELECT * FROM sale_items WHERE sale_id=?", (sale_id,)).fetchall()
+    payments = db.execute("SELECT * FROM payments   WHERE sale_id=?", (sale_id,)).fetchall()
+    shop     = db.execute("SELECT * FROM shops      WHERE id=?", (sale['shop_id'],)).fetchone()
+
+    customer_name = None
+    if sale['customer_id']:
+        c = db.execute("SELECT name FROM customers WHERE id=?", (sale['customer_id'],)).fetchone()
+        if c:
+            customer_name = c['name']
+
+    db.close()
+    sale_dict = dict(sale)
+    sale_dict['customer_name'] = customer_name
+
+    return jsonify({
+        'shop':     dict(shop) if shop else {},
+        'sale':     sale_dict,
+        'items':    [dict(i) for i in items],
+        'payments': [dict(p) for p in payments],
+    })
+
+
 @app.route('/manifest.json')
 def pwa_manifest():
     """PWA Web App Manifest — required for TWA/installable PWA."""
