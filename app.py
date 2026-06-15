@@ -19,8 +19,9 @@ import firebase_sync
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'tronic_pos_zw_2024_change_in_production')
 
-ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'lincolnmotiwac@gmail.com')
+ADMIN_EMAIL    = os.environ.get('ADMIN_EMAIL',    'lincolnmotiwac@gmail.com')
 ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'Admin@Tronic2024!')
+DESKTOP_MODE   = os.environ.get('DESKTOP_MODE')  == '1'
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,7 +153,8 @@ def inject_globals():
         'assigned_shop_id': session.get('assigned_shop_id'),
     }
     return dict(shop=shop, user_shops=user_shops,
-                low_stock_count=low_stock, current_user=current_user)
+                low_stock_count=low_stock, current_user=current_user,
+                desktop_mode=DESKTOP_MODE)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -790,8 +792,17 @@ def receipt(sale_id):
 
     # For receipt, load the shop that made the sale (not necessarily the current session shop)
     shop = db.execute("SELECT * FROM shops WHERE id=?", (sale['shop_id'],)).fetchone()
+
+    customer_name = None
+    if sale['customer_id']:
+        c = db.execute("SELECT name FROM customers WHERE id=?", (sale['customer_id'],)).fetchone()
+        if c:
+            customer_name = c['name']
+
     db.close()
-    return render_template('receipt.html', sale=dict(sale),
+    sale_dict = dict(sale)
+    sale_dict['customer_name'] = customer_name
+    return render_template('receipt.html', sale=sale_dict,
                            items=[dict(i) for i in items],
                            payments=[dict(p) for p in payments],
                            shop=dict(shop) if shop else {})
@@ -1944,6 +1955,119 @@ def api_sync_status():
     ).fetchall()]
     db.close()
     return jsonify({'shop_id': sid(), 'products': products, 'online': True})
+
+
+@app.route('/manifest.json')
+def pwa_manifest():
+    """PWA Web App Manifest — required for TWA/installable PWA."""
+    manifest = {
+        "name": "Tronic POS",
+        "short_name": "TronicPOS",
+        "description": "Zimbabwe Point-of-Sale — EcoCash, ZIMRA VAT, Inventory",
+        "start_url": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#1e293b",
+        "theme_color": "#1e293b",
+        "lang": "en",
+        "scope": "/",
+        "icons": [
+            {"src": "/static/icons/icon-72.png",  "sizes": "72x72",   "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-152.png", "sizes": "152x152", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-384.png", "sizes": "384x384", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+        "categories": ["business", "finance", "productivity"],
+        "screenshots": [],
+    }
+    return jsonify(manifest)
+
+
+@app.route('/.well-known/assetlinks.json')
+def assetlinks():
+    """Android TWA Digital Asset Links — allows APK to run without browser chrome."""
+    default_links = json.dumps([{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "com.tronic.pos",
+            "sha256_cert_fingerprints": [
+                "A9:AE:A4:A6:96:0D:91:68:E9:63:39:97:1E:F1:48:D8:58:B0:2E:A3:0B:4B:D8:31:64:3F:E2:10:6D:8F:64:EA"
+            ]
+        }
+    }])
+    links = json.loads(os.environ.get('ASSETLINKS_JSON', default_links))
+    return jsonify(links)
+
+
+@app.route('/api/connectivity')
+def api_connectivity():
+    """Online/offline status for the desktop app."""
+    try:
+        import sync_manager
+        is_online = sync_manager.online()
+    except Exception:
+        import socket
+        try:
+            socket.setdefaulttimeout(2)
+            socket.getaddrinfo('firebaseio.com', 443)
+            is_online = True
+        except Exception:
+            is_online = False
+    return jsonify({'online': is_online, 'desktop_mode': DESKTOP_MODE})
+
+
+@app.route('/api/sync/push-all', methods=['POST'])
+@admin_required
+def api_sync_push_all():
+    """Push all local data to Firebase (admin only). Desktop use."""
+    db = get_db()
+    try:
+        shops = [dict(r) for r in db.execute(
+            "SELECT * FROM shops WHERE is_active=1"
+        ).fetchall()]
+        counts = {'shops': 0, 'products': 0, 'sales': 0, 'expenses': 0,
+                  'suppliers': 0, 'customers': 0}
+        for shop in shops:
+            sid_ = shop['id']
+            firebase_sync.sync_shop(shop)
+            counts['shops'] += 1
+            for row in db.execute(
+                "SELECT * FROM products WHERE shop_id=? AND is_active=1", (sid_,)
+            ).fetchall():
+                firebase_sync.sync_product(sid_, dict(row))
+                counts['products'] += 1
+            for row in db.execute(
+                "SELECT * FROM sales WHERE shop_id=? AND status='completed' "
+                "ORDER BY created_at DESC LIMIT 500", (sid_,)
+            ).fetchall():
+                firebase_sync.sync_sale(sid_, dict(row))
+                counts['sales'] += 1
+            for row in db.execute(
+                "SELECT * FROM expenses WHERE shop_id=? ORDER BY created_at DESC LIMIT 200",
+                (sid_,)
+            ).fetchall():
+                firebase_sync.sync_expense(sid_, dict(row))
+                counts['expenses'] += 1
+            for row in db.execute(
+                "SELECT * FROM suppliers WHERE shop_id=?", (sid_,)
+            ).fetchall():
+                firebase_sync.sync_supplier(sid_, dict(row))
+                counts['suppliers'] += 1
+            for row in db.execute(
+                "SELECT * FROM customers WHERE shop_id=?", (sid_,)
+            ).fetchall():
+                firebase_sync.sync_customer(sid_, dict(row))
+                counts['customers'] += 1
+        db.close()
+        return jsonify({'success': True, 'synced': counts})
+    except Exception as ex:
+        db.close()
+        return jsonify({'error': str(ex)}), 500
 
 
 def create_admin():

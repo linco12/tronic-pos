@@ -1,97 +1,249 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width">
   <title>Receipt — {{ sale.reference }}</title>
   <style>
+    /* ── Thermal Printer Optimized Receipt ─────────────────────────────────────
+       Designed for 80mm thermal paper (72mm printable width).
+       Monospace font, no background fills, crisp black on white.
+    ─────────────────────────────────────────────────────────────────────────── */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Courier New', monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 10px; }
-    .center { text-align: center; }
-    .shop-name { font-size: 16px; font-weight: bold; }
-    hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
-    .row { display: flex; justify-content: space-between; margin: 2px 0; }
-    .item-name { flex: 1; }
-    .item-price { text-align: right; min-width: 70px; }
-    .total-row { font-weight: bold; font-size: 14px; }
-    .footer { text-align: center; margin-top: 8px; font-size: 11px; }
-    .big { font-size: 18px; font-weight: bold; }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      line-height: 1.4;
+      color: #000;
+      background: #fff;
+      width: 302px;          /* 80mm at 96dpi */
+      margin: 0 auto;
+      padding: 8px 6px 20px;
+    }
+
+    /* ── Header ── */
+    .shop-name {
+      font-size: 18px;
+      font-weight: bold;
+      text-align: center;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .shop-meta {
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.5;
+      margin-bottom: 4px;
+    }
+
+    /* ── Dividers ── */
+    .div-eq  { border-top: 2px solid #000; margin: 5px 0; }
+    .div-dash{ border: none; border-top: 1px dashed #000; margin: 4px 0; }
+
+    /* ── Row layout ── */
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 1px 0;
+      gap: 4px;
+    }
+    .row .label { flex: 1; }
+    .row .value { text-align: right; white-space: nowrap; }
+
+    /* ── Items ── */
+    .item { margin: 3px 0; }
+    .item-name { font-weight: bold; word-break: break-word; }
+    .item-detail { display: flex; justify-content: space-between; padding-left: 6px; font-size: 12px; }
+
+    /* ── Totals ── */
+    .total-section { margin: 2px 0; }
+    .grand-total {
+      display: flex;
+      justify-content: space-between;
+      font-size: 16px;
+      font-weight: bold;
+      margin: 3px 0;
+    }
+    .payment-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin: 1px 0;
+    }
+    .change-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      font-weight: bold;
+      margin: 2px 0;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      margin-top: 8px;
+      line-height: 1.6;
+    }
+    .footer .thank-you { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+    .vat-label {
+      text-align: center;
+      font-size: 12px;
+      font-weight: bold;
+      border: 1px solid #000;
+      padding: 2px 6px;
+      display: inline-block;
+      margin: 4px auto;
+    }
+
+    /* ── Screen only ── */
+    .screen-only {
+      margin-top: 20px;
+      text-align: center;
+      padding: 12px;
+    }
+    .screen-only button {
+      padding: 10px 28px;
+      font-size: 15px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 8px;
+      font-family: inherit;
+    }
+    .screen-only button:hover { background: #1d4ed8; }
+    .screen-only a { color: #64748b; font-size: 13px; margin-left: 12px; text-decoration: none; }
+
+    /* ── Print rules ── */
     @media print {
-      body { margin: 0; }
-      .no-print { display: none !important; }
+      body { width: 100%; padding: 0; margin: 0; }
+      .screen-only { display: none !important; }
+
+      /* Paper size hint for browsers — 80mm thermal */
+      @page {
+        size: 80mm auto;
+        margin: 4mm 2mm;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="center">
-    <div class="shop-name">{{ shop.name }}</div>
+
+  <!-- ── HEADER ── -->
+  <div class="shop-name">{{ shop.name }}</div>
+  <div class="shop-meta">
     {% if shop.tagline %}<div>{{ shop.tagline }}</div>{% endif %}
     {% if shop.address %}<div>{{ shop.address }}</div>{% endif %}
     {% if shop.phone %}<div>Tel: {{ shop.phone }}</div>{% endif %}
+    {% if shop.email %}<div>{{ shop.email }}</div>{% endif %}
     {% if shop.vat_registered and shop.vat_number %}<div>VAT Reg: {{ shop.vat_number }}</div>{% endif %}
     {% if shop.zimra_tin %}<div>ZIMRA TIN: {{ shop.zimra_tin }}</div>{% endif %}
   </div>
+  <div class="div-eq"></div>
 
-  <hr>
-  <div class="row"><span>Receipt No:</span><span>{{ sale.reference }}</span></div>
-  <div class="row"><span>Date:</span><span>{{ sale.created_at[:16] }}</span></div>
-  <div class="row"><span>Cashier:</span><span>{{ sale.cashier }}</span></div>
-  <hr>
+  <!-- ── TRANSACTION DETAILS ── -->
+  <div class="row"><span class="label">Receipt No:</span><span class="value">{{ sale.reference }}</span></div>
+  <div class="row"><span class="label">Date/Time:</span><span class="value">{{ sale.created_at[:16] }}</span></div>
+  <div class="row"><span class="label">Cashier:</span><span class="value"><strong>{{ sale.cashier }}</strong></span></div>
+  {% if sale.customer_name %}
+  <div class="row"><span class="label">Customer:</span><span class="value">{{ sale.customer_name }}</span></div>
+  {% endif %}
+  <div class="div-dash"></div>
 
-  <div>
-    {% for item in items %}
+  <!-- ── ITEMS ── -->
+  {% for item in items %}
+  <div class="item">
     <div class="item-name">{{ item.product_name }}</div>
-    <div class="row">
-      <span class="ms-2">{{ item.quantity }} × ${{ '%.2f'|format(item.unit_price) }}</span>
-      <span class="item-price">${{ '%.2f'|format(item.total) }}</span>
+    <div class="item-detail">
+      <span>{{ '%g'|format(item.quantity) }} &times; ${{ '%.2f'|format(item.unit_price) }}</span>
+      <span><strong>${{ '%.2f'|format(item.total) }}</strong></span>
     </div>
-    {% endfor %}
+    {% if item.tax_amount > 0 %}
+    <div class="item-detail" style="font-size:11px;color:#555">
+      <span>VAT incl.</span>
+      <span>${{ '%.2f'|format(item.tax_amount) }}</span>
+    </div>
+    {% endif %}
   </div>
+  {% endfor %}
+  <div class="div-dash"></div>
 
-  <hr>
-  <div class="row"><span>Subtotal</span><span>${{ '%.2f'|format(sale.subtotal) }}</span></div>
-  {% if sale.tax_amount > 0 %}
-  <div class="row"><span>VAT ({{ shop.vat_rate or 15 }}%)</span><span>${{ '%.2f'|format(sale.tax_amount) }}</span></div>
-  {% endif %}
-  {% if sale.discount_amount > 0 %}
-  <div class="row"><span>Discount</span><span>-${{ '%.2f'|format(sale.discount_amount) }}</span></div>
-  {% endif %}
-  <hr>
-  <div class="row total-row"><span>TOTAL</span><span>${{ '%.2f'|format(sale.total) }}</span></div>
+  <!-- ── TOTALS ── -->
+  <div class="total-section">
+    <div class="row"><span class="label">Subtotal</span><span class="value">${{ '%.2f'|format(sale.subtotal) }}</span></div>
+    {% if sale.tax_amount > 0 %}
+    <div class="row"><span class="label">VAT ({{ shop.vat_rate or 15 }}%)</span><span class="value">${{ '%.2f'|format(sale.tax_amount) }}</span></div>
+    {% endif %}
+    {% if sale.discount_amount > 0 %}
+    <div class="row"><span class="label">Discount</span><span class="value">-${{ '%.2f'|format(sale.discount_amount) }}</span></div>
+    {% endif %}
+  </div>
+  <div class="div-eq"></div>
+  <div class="grand-total">
+    <span>TOTAL</span>
+    <span>${{ '%.2f'|format(sale.total) }}</span>
+  </div>
+  <div class="div-eq"></div>
 
-  <hr>
+  <!-- ── PAYMENTS ── -->
   {% for p in payments %}
-  <div class="row">
+  <div class="payment-row">
     <span>{{ p.method|upper }}</span>
     <span>${{ '%.2f'|format(p.amount) }}</span>
   </div>
-  {% if p.method == 'ecocash' and p.ecocash_number %}
-  <div class="row"><span>EcoCash No:</span><span>{{ p.ecocash_number }}</span></div>
-  {% if p.transaction_ref %}<div class="row"><span>ECO Ref:</span><span>{{ p.transaction_ref }}</span></div>{% endif %}
+  {% if p.method == 'ecocash' or p.method == 'split' %}
+    {% if p.ecocash_number %}
+    <div class="payment-row" style="padding-left:6px;font-size:11px">
+      <span>EcoCash No:</span><span>{{ p.ecocash_number }}</span>
+    </div>
+    {% endif %}
+    {% if p.transaction_ref %}
+    <div class="payment-row" style="padding-left:6px;font-size:11px">
+      <span>ECO Ref:</span><span>{{ p.transaction_ref }}</span>
+    </div>
+    {% endif %}
   {% endif %}
   {% endfor %}
+
   {% if sale.change_given > 0 %}
-  <div class="row total-row"><span>CHANGE</span><span>${{ '%.2f'|format(sale.change_given) }}</span></div>
+  <div class="div-dash"></div>
+  <div class="change-row">
+    <span>CHANGE DUE</span>
+    <span>${{ '%.2f'|format(sale.change_given) }}</span>
+  </div>
   {% endif %}
 
-  <hr>
+  <!-- ── FOOTER ── -->
+  <div class="div-eq"></div>
   <div class="footer">
-    {% if shop.receipt_footer %}{{ shop.receipt_footer }}{% else %}Thank you for shopping with us!{% endif %}
-    <br><br>
-    {% if shop.vat_registered %}<strong>*** VAT INVOICE ***</strong><br>{% endif %}
-    All prices in {{ shop.currency or 'USD' }}
+    <div class="thank-you">
+      {{ shop.receipt_footer if shop.receipt_footer else 'Thank you for shopping with us!' }}
+    </div>
+    <div>All prices in {{ shop.currency or 'USD' }}</div>
+    {% if shop.vat_registered %}
+    <div style="margin-top:4px">
+      <span class="vat-label">*** FISCAL TAX INVOICE ***</span>
+    </div>
+    {% endif %}
+    <div style="margin-top:6px;font-size:10px;color:#555">Powered by Tronic POS</div>
   </div>
 
-  <div class="no-print" style="margin-top:20px;text-align:center">
-    <button onclick="window.print()" style="padding:8px 20px;font-size:14px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer">
-      Print Receipt
-    </button>
-    <br><br>
+  <!-- ── Screen buttons (hidden when printing) ── -->
+  <div class="screen-only">
+    <button onclick="window.print()"><i>&#128438;</i> Print Receipt</button>
     <a href="javascript:window.close()">Close</a>
   </div>
 
   <script>
-    // Auto-print when opened in new tab
-    window.onload = function() { window.print(); };
+    // Auto-print when opened in new tab/window
+    window.addEventListener('load', function() {
+      setTimeout(function() { window.print(); }, 300);
+    });
   </script>
 </body>
 </html>

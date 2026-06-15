@@ -7,6 +7,14 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1e293b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tronic POS">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -159,7 +167,19 @@
         <i class="bi bi-exclamation-triangle me-1"></i>{{ low_stock_count }} Low
       </a>
       {% endif %}
-      <!-- Offline sync badge -->
+      <!-- Connectivity indicator (desktop mode) -->
+      {% if desktop_mode %}
+      <span id="net-badge" class="badge bg-secondary" title="Checking connectivity...">
+        <i class="bi bi-wifi-off me-1"></i>Offline
+      </span>
+      {% if current_user and current_user.role == 'admin' %}
+      <button class="btn btn-sm btn-outline-info d-none" id="sync-all-btn"
+        title="Push all local data to Firebase" onclick="pushAllToFirebase()">
+        <i class="bi bi-cloud-upload me-1"></i>Sync
+      </button>
+      {% endif %}
+      {% endif %}
+      <!-- Offline sale queue badge -->
       <button class="btn btn-sm btn-warning position-relative d-none" id="offline-sync-btn"
         title="Pending offline sales" onclick="flushQueue()">
         <i class="bi bi-cloud-upload"></i>
@@ -258,5 +278,53 @@
   });
 </script>
 {% block scripts %}{% endblock %}
+
+{% if desktop_mode %}
+<script>
+// ── Desktop mode: connectivity polling ───────────────────────────────────────
+async function checkConnectivity() {
+  try {
+    const r = await fetch('/api/connectivity', {cache: 'no-store'});
+    const data = await r.json();
+    const badge = document.getElementById('net-badge');
+    const syncBtn = document.getElementById('sync-all-btn');
+    if (data.online) {
+      if (badge) {
+        badge.className = 'badge bg-success';
+        badge.innerHTML = '<i class="bi bi-wifi me-1"></i>Online';
+      }
+      if (syncBtn) syncBtn.classList.remove('d-none');
+    } else {
+      if (badge) {
+        badge.className = 'badge bg-secondary';
+        badge.innerHTML = '<i class="bi bi-wifi-off me-1"></i>Offline';
+      }
+      if (syncBtn) syncBtn.classList.add('d-none');
+    }
+  } catch(e) {}
+}
+
+async function pushAllToFirebase() {
+  const btn = document.getElementById('sync-all-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Syncing…'; }
+  try {
+    const r = await fetch('/api/sync/push-all', {method:'POST', headers:{'Content-Type':'application/json'}});
+    const d = await r.json();
+    if (d.success) {
+      const t = Object.entries(d.synced).map(([k,v])=>`${v} ${k}`).join(', ');
+      alert('Sync complete: ' + t);
+    } else {
+      alert('Sync error: ' + (d.error || 'Unknown'));
+    }
+  } catch(e) { alert('Sync failed: ' + e); }
+  finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Sync'; }
+  }
+}
+
+checkConnectivity();
+setInterval(checkConnectivity, 30000);
+</script>
+{% endif %}
 </body>
 </html>

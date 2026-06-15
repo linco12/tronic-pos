@@ -23,8 +23,8 @@
             <td>{{ s.address or '—' }}</td>
             <td><span class="badge bg-info text-dark">{{ s.payment_terms or 'Cash' }}</span></td>
             <td>
-              <a href="{{ url_for('supplier_edit', sid=s.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
-              <form method="post" action="{{ url_for('supplier_delete', sid=s.id) }}" class="d-inline"
+              <a href="{{ url_for('supplier_edit', sid_=s.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+              <form method="post" action="{{ url_for('supplier_delete', sid_=s.id) }}" class="d-inline"
                     onsubmit="return confirm('Delete {{ s.name }}?')">
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
               </form>
